@@ -243,13 +243,7 @@ export default function LandingScreen() {
         router.push("/(tabs)/home" as any);
         break;
       case "education":
-        router.push({
-          pathname: "/zoho-form",
-          params: {
-            url: "https://forms.zohopublic.in/tcbtjaivikkisan1/form/LearnOrganicFarming/formperma/BvAhyL6jdGoyyx3enkffbqJEyHbjeKL19hCMKzCSqDA",
-            title: "TCBT Education",
-          },
-        } as any);
+        router.push("/education" as any);
         break;
       case "food":
         Alert.alert(

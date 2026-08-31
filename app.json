@@ -21,7 +21,7 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "package": "com.tcbt.myapp",
-      "minSdkVersion": 26,
+      "minSdkVersion": 24,
       "versionCode": 4
     },
     "web": {
@@ -45,6 +45,7 @@
       ],
       "expo-font",
       "expo-secure-store",
+      "expo-screen-orientation",
       "./plugins/withZohoMaven"
     ],
     "experiments": {

@@ -7,6 +7,7 @@ import wishlistReducer from "../features/catalog/store/wishlistSlice";
 import orderReducer from "../features/checkout/store/orderSlice";
 import shippingReducer from "../features/checkout/store/shippingSlice";
 import ordersReducer from "../features/orders/store/ordersSlice";
+import educationReducer from "../features/education/store/educationSlice";
 
 export const store = configureStore({
   reducer: {
@@ -16,6 +17,7 @@ export const store = configureStore({
     user: userReducer,
     wishlist: wishlistReducer,
     orders: ordersReducer,
+    education: educationReducer,
   },
 });
 
