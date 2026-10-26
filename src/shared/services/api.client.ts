@@ -9,7 +9,7 @@ import {
   clearAllSession,
 } from "./token.service";
 
-const BASE_URL = AppConfig.API_BASE_URL;
+const getBaseUrl = () => AppConfig.API_BASE_URL;
 
 type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
@@ -36,7 +36,7 @@ async function refreshAccessToken(): Promise<boolean> {
 
     if (!session_id || !refresh_token) return false;
 
-    const response = await fetch(`${BASE_URL}/auth/refresh`, {
+    const response = await fetch(`${getBaseUrl()}/auth/refresh`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -58,6 +58,15 @@ async function refreshAccessToken(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Helper to safely serialize request body without double-encoding
+ */
+function serializeBody(body: unknown): string | undefined {
+  if (body === undefined || body === null) return undefined;
+  if (typeof body === "string") return body;
+  return JSON.stringify(body);
 }
 
 /**
@@ -85,14 +94,27 @@ export async function apiRequest<T>(
     }
   }
 
-  const url = `${BASE_URL}${endpoint}`;
-  if (__DEV__) console.log(`[API] ${method} ${url}`, body ? JSON.stringify(body) : '');
+  const url = `${getBaseUrl()}${endpoint}`;
+  const serializedBody = serializeBody(body);
+  if (__DEV__) console.log(`[API] ${method} ${url}`, serializedBody ?? '');
 
-  let response = await fetch(url, {
-    method,
-    headers: requestHeaders,
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method,
+      headers: requestHeaders,
+      ...(serializedBody ? { body: serializedBody } : {}),
+    });
+  } catch (netErr: any) {
+    if (__DEV__) {
+      console.error(`[API Network Error] ${method} ${url}:`, netErr?.message || netErr);
+    }
+    throw new ApiError(
+      0,
+      `Cannot connect to server at ${url}. Please verify your server is running and device network is connected.`,
+      netErr
+    );
+  }
 
   // If 401/403 and we have a refresh token, try refreshing
   if ((response.status === 401 || response.status === 403) && !skipAuth) {
@@ -113,11 +135,15 @@ export async function apiRequest<T>(
       if (newToken) {
         requestHeaders["Authorization"] = `Bearer ${newToken}`;
       }
-      response = await fetch(`${BASE_URL}${endpoint}`, {
-        method,
-        headers: requestHeaders,
-        ...(body ? { body: JSON.stringify(body) } : {}),
-      });
+      try {
+        response = await fetch(`${getBaseUrl()}${endpoint}`, {
+          method,
+          headers: requestHeaders,
+          ...(serializedBody ? { body: serializedBody } : {}),
+        });
+      } catch (retryErr: any) {
+        throw new ApiError(0, `Network error on retry: ${retryErr?.message || retryErr}`, retryErr);
+      }
     } else {
       // Refresh failed — clear session
       await clearAllSession();

@@ -1,5 +1,40 @@
-// src/core/config/app.config.ts
-// ─── Application-wide configuration ──────────────────────────────────────────
+import Constants from "expo-constants";
+import { Platform } from "react-native";
+
+/**
+ * Resolves the API base URL depending on environment:
+ * - Production: live server https://api.tcbtjaivikkisan.com
+ * - Dev: dynamically uses the Metro host IP (e.g. 192.168.1.4) so Android
+ *   emulators and physical devices on Wi-Fi can reach the local backend.
+ */
+const getDevApiBaseUrl = (): string => {
+  if (!__DEV__) {
+    return "https://api.tcbtjaivikkisan.com";
+  }
+
+  // 1. Android Emulator (AVD):
+  // 10.0.2.2 maps directly to the host PC's 127.0.0.1, bypassing Windows Defender
+  // Firewall which blocks incoming connections to 192.168.x.x from the virtual adapter.
+  if (Platform.OS === "android" && !Constants.isDevice) {
+    return "http://10.0.2.2:3000";
+  }
+
+  // 2. Physical device on Wi-Fi: use the host IP detected from Metro bundler
+  const hostUri = Constants.expoConfig?.hostUri;
+  if (hostUri) {
+    const host = hostUri.split(":")[0];
+    if (host && host !== "localhost" && host !== "127.0.0.1") {
+      return `http://${host}:3000`;
+    }
+  }
+
+  // 3. Fallbacks
+  if (Platform.OS === "android") {
+    return "http://10.0.2.2:3000";
+  }
+
+  return "http://localhost:3000";
+};
 
 export const AppConfig = {
   /** App metadata */
@@ -7,8 +42,8 @@ export const AppConfig = {
   APP_VERSION: "2.0.0",
   APP_SLUG: "client",
 
-  /** API configuration — swap per environment */
-  API_BASE_URL: "https://api.tcbtjaivikkisan.com",
+  /** API configuration — dynamic per environment */
+  API_BASE_URL: getDevApiBaseUrl(),
   CDN_BASE_URL: "https://cdn2.zohoecommerce.com",
   STOREFRONT_DOMAIN: "products.tcbtjaivikkisan.com",
 

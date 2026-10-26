@@ -24,14 +24,14 @@ export interface ShippingRateResponse {
  * @param deliveryPincode  Delivery pin code as a number
  *
  * Business rule:
- *   weight > 20,000 g  (i.e. > 20 kg)  → type_of_package = 'B2B'
- *   otherwise                           → type_of_package = 'SPS'
+ *   weight >= 10,000 g (i.e. >= 10 kg) → type_of_package = 'B2B'
+ *   otherwise                          → type_of_package = 'SPS'
  */
 export async function calculateShippingRate(
   weightGrams: number,
   deliveryPincode: number
 ): Promise<ShippingRateResponse> {
-  const type_of_package: 'SPS' | 'B2B' = weightGrams > 20_000 ? 'B2B' : 'SPS';
+  const type_of_package: 'SPS' | 'B2B' = weightGrams >= 10_000 ? 'B2B' : 'SPS';
 
   return apiRequest<ShippingRateResponse>('/shipping/rate', {
     method: 'POST',

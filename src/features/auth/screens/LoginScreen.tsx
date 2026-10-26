@@ -1,4 +1,5 @@
 import { loginSuccess } from "@/src/features/auth/store/userSlice";
+import { syncEnrolledCourses } from "@/src/features/education/store/educationSlice";
 import { LinearGradient } from "expo-linear-gradient";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
@@ -154,8 +155,13 @@ export default function LoginScreen() {
             userId: user._id,
             sessionId: session_id,
             addresses: user.addresses,
+            enrolled_courses: user.enrolled_courses,
           })
         );
+
+        if (user.enrolled_courses?.length) {
+          dispatch(syncEnrolledCourses(user.enrolled_courses));
+        }
         // First-time user (no name) → collect name before landing
         const isFirstTime = !user.name || !user.name.trim();
         const defaultDest = isFirstTime ? "/complete-profile" : "/landing";

@@ -10,6 +10,7 @@ export interface UserState {
   token: string | null;
   sessionId: string | null;
   addresses: UserAddress[];
+  enrolledCourses?: string[];
 }
 
 export interface UserAddress {
@@ -33,6 +34,7 @@ export interface LoginPayload {
   userId?: string;
   sessionId?: string;
   addresses?: UserAddress[];
+  enrolled_courses?: string[];
 }
 
 export interface OtpResponse {
@@ -54,6 +56,7 @@ export interface BackendUser {
   addresses?: UserAddress[];
   zoho_contact_id?: string;
   last_login_at?: string;
+  enrolled_courses?: string[];
 }
 
 export interface RefreshResponse {

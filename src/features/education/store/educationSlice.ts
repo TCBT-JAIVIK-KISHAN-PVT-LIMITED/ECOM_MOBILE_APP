@@ -29,6 +29,16 @@ const educationSlice = createSlice({
       }
     },
 
+    /** Sync all enrolled course IDs from user profile/backend */
+    syncEnrolledCourses(state, action: PayloadAction<string[]>) {
+      const courseIds = action.payload || [];
+      for (const id of courseIds) {
+        if (!state.purchasedCourses.includes(id)) {
+          state.purchasedCourses.push(id);
+        }
+      }
+    },
+
     /** Mark a lecture as complete */
     markLectureComplete(
       state,
@@ -72,6 +82,7 @@ const educationSlice = createSlice({
 // ─── Actions ──────────────────────────────────────────────────────────────────
 export const {
   purchaseCourse,
+  syncEnrolledCourses,
   markLectureComplete,
   setLastWatched,
   resetEducation,

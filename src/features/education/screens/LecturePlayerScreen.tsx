@@ -264,7 +264,7 @@ export default function LecturePlayerScreen() {
           <View style={styles.videoLoader}>
             <ActivityIndicator size="large" color="#4CAF50" />
             <Text style={styles.videoLoaderText}>
-              Connecting to Zoho WorkDrive...
+              Loading lecture video...
             </Text>
           </View>
         ) : (

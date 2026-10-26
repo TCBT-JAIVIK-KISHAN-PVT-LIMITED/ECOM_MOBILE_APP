@@ -12,6 +12,7 @@ const initialState: UserState = {
   token: null,
   sessionId: null,
   addresses: [],
+  enrolledCourses: [],
 };
 
 const userSlice = createSlice({
@@ -27,6 +28,7 @@ const userSlice = createSlice({
       state.userId = action.payload.userId ?? null;
       state.sessionId = action.payload.sessionId ?? null;
       state.addresses = action.payload.addresses ?? [];
+      state.enrolledCourses = action.payload.enrolled_courses ?? [];
     },
     logout(state) {
       state.isLoggedIn = false;
@@ -37,6 +39,10 @@ const userSlice = createSlice({
       state.email = null;
       state.sessionId = null;
       state.addresses = [];
+      state.enrolledCourses = [];
+    },
+    setEnrolledCourses(state, action: PayloadAction<string[]>) {
+      state.enrolledCourses = action.payload;
     },
     updateProfile(
       state,
@@ -72,6 +78,7 @@ const userSlice = createSlice({
 export const {
   loginSuccess,
   logout,
+  setEnrolledCourses,
   updateProfile,
   setAddresses,
   addAddress,

@@ -55,9 +55,46 @@ export default function CourseDetailScreen() {
   const progress = useSelector((state: RootState) =>
     selectCourseProgress(state, course.id)
   );
+  const user = useSelector((state: RootState) => state.user);
 
   const [lectures, setLectures] = useState<Lecture[]>(course.lectures);
   const [purchasing, setPurchasing] = useState(false);
+
+  // Sync state if static courses data updates
+  useEffect(() => {
+    setLectures(course.lectures);
+  }, [course.lectures]);
+
+  // Check backend enrollment status for logged-in selective users
+  useEffect(() => {
+    let isMounted = true;
+    async function checkEnrollment() {
+      // 1. Check local Redux user state
+      if (user?.enrolledCourses?.includes(course.id)) {
+        dispatch(purchaseCourse(course.id));
+        return;
+      }
+
+      // 2. Query backend for real-time enrollment if logged in
+      if (user?.isLoggedIn && user?.userId) {
+        try {
+          const res = await apiRequest<{ enrolled_courses: string[] }>(
+            `/users/${user.userId}/courses`
+          );
+          if (isMounted && res?.enrolled_courses?.includes(course.id)) {
+            dispatch(purchaseCourse(course.id));
+          }
+        } catch {
+          // Ignore network errors
+        }
+      }
+    }
+
+    checkEnrollment();
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.isLoggedIn, user?.userId, user?.enrolledCourses, course.id, dispatch]);
 
   // Fetch live lectures from Zoho WorkDrive folder if available
   useEffect(() => {
@@ -119,11 +156,11 @@ export default function CourseDetailScreen() {
         orderId: string;
       }>("/education/orders", {
         method: "POST",
-        body: JSON.stringify({
+        body: {
           courseId: course.id,
           amount: course.price,
           description: course.title,
-        }),
+        },
       });
 
       // 2. Open Zoho Payments checkout
