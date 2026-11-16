@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "client",
+    "name": "TCBT",
     "slug": "client",
-    "version": "1.0.0",
+    "version": "1.2.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "client",
@@ -19,7 +19,10 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.tcbt.myapp",
+      "minSdkVersion": 24,
+      "versionCode": 5
     },
     "web": {
       "output": "static",
@@ -40,11 +43,28 @@
           }
         }
       ],
-      "expo-font"
+      "expo-font",
+      "expo-secure-store",
+      "expo-screen-orientation",
+      "./plugins/withZohoMaven",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "86b7a4c9-cd18-471d-a3dd-c4eb2eddb16d"
+      }
     }
   }
 }

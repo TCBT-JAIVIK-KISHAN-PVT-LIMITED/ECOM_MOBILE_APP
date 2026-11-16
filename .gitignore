@@ -41,3 +41,15 @@ app-example
 # generated native folders
 /ios
 /android
+
+
+# IDE / Android Studio
+.idea/
+*.iml
+
+# Local JDK distributions
+jdk-*/
+
+# signing credentials
+/credentials
+credentials.json

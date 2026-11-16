@@ -1,154 +1,227 @@
+// app/profile.tsx — matches Figma screen_15
 import { router } from "expo-router";
-import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import { C } from "../src/constants/theme";
+import { useCallback } from "react";
+import {
+  Alert,
+  SafeAreaView,
+  Share,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
+import { logoutUser } from "../src/features/auth/services/auth.service";
+import { RESET_APP } from "../src/store/resetAction";
+import { useAppDispatch, useAppSelector } from "../src/shared/hooks/useRedux";
+
+const GREEN = "#196F1B";
 
 export default function ProfileScreen() {
+  const dispatch = useAppDispatch();
+  const user = useAppSelector((state) => state.user);
+
+  const handleLogout = useCallback(() => {
+    Alert.alert("Log Out", "Are you sure you want to log out?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Log Out",
+        style: "destructive",
+        onPress: async () => {
+          await logoutUser();
+          dispatch(RESET_APP());
+          router.replace("/login" as any);
+        },
+      },
+    ]);
+  }, [dispatch]);
+
+  const handleShare = useCallback(async () => {
+    try {
+      await Share.share({
+        message:
+          "Check out TCBT — Natural farming products! Download now: https://play.google.com/store/apps/details?id=com.tcbt.myapp",
+      });
+    } catch (_) { }
+  }, []);
+
   return (
     <SafeAreaView style={styles.safe}>
+      <StatusBar barStyle="light-content" backgroundColor={GREEN} />
+
+      {/* ── Green Header ── */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <Text style={styles.backBtnText}>←</Text>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={styles.backBtn}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Text style={styles.backArrow}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Profile</Text>
-        <View style={styles.placeholder} />
+
+        <View style={styles.avatarCircle}>
+          <Text style={styles.avatarIcon}>👤</Text>
+        </View>
+
+        <Text style={styles.headerName}>{user.name || "Your account"}</Text>
+        <Text style={styles.headerPhone}>
+          {user.phone || "Not logged in"}
+        </Text>
       </View>
 
+      {/* ── Content ── */}
       <View style={styles.content}>
-        <View style={styles.avatarContainer}>
-          <Text style={styles.avatarEmoji}>👤</Text>
+        {/* Section 1: Your information */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Your information</Text>
+
+          <MenuItem
+            title="Address book"
+            onPress={() => router.push("/address-book" as any)}
+          />
+          <MenuItem
+            title="Your wishlist"
+            onPress={() => router.push("/wishlist" as any)}
+          />
+          <MenuItem
+            title="Your orders"
+            onPress={() => router.push("/(tabs)/orders" as any)}
+          />
         </View>
-        <Text style={styles.guestText}>Guest User</Text>
-        <Text style={styles.subtitle}>Login to access your profile</Text>
 
-        <TouchableOpacity 
-          style={styles.loginBtn}
-          onPress={() => {}}
-        >
-          <Text style={styles.loginBtnText}>Login / Sign Up</Text>
-        </TouchableOpacity>
+        {/* Section 2: Other information */}
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Other information</Text>
 
-        <View style={styles.divider} />
+          <MenuItem
+            title="Log out"
+            onPress={user.isLoggedIn ? handleLogout : undefined}
+          />
+          <MenuItem title="Share the app" onPress={handleShare} />
+          <MenuItem
+            title="Notification preferences"
+            onPress={() => Alert.alert("Coming Soon", "Notification preferences will be available in a future update.")}
+          />
+        </View>
 
-        <Text style={styles.sectionTitle}>Account</Text>
-        <TouchableOpacity style={styles.menuItem}>
-          <Text style={styles.menuIcon}>📦</Text>
-          <Text style={styles.menuText}>My Orders</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.menuItem}>
-          <Text style={styles.menuIcon}>📍</Text>
-          <Text style={styles.menuText}>Saved Addresses</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.menuItem}>
-          <Text style={styles.menuIcon}>💳</Text>
-          <Text style={styles.menuText}>Payment Methods</Text>
-        </TouchableOpacity>
+        {/* Footer branding */}
+        <View style={styles.footer}>
+          <Text style={styles.brand}>TCBT</Text>
+          <Text style={styles.version}>v10.01.0</Text>
+        </View>
       </View>
     </SafeAreaView>
   );
 }
 
+/* ── Menu Item Component ── */
+function MenuItem({
+  title,
+  onPress,
+}: {
+  title: string;
+  onPress?: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      style={styles.menuItem}
+      activeOpacity={0.7}
+      onPress={onPress}
+    >
+      <Text style={styles.menuText}>{title}</Text>
+      <Text style={styles.menuArrow}>›</Text>
+    </TouchableOpacity>
+  );
+}
+
 const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: C.bg,
-  },
+  safe: { flex: 1, backgroundColor: "#F2F2F2" },
+
+  /* ── Header ── */
   header: {
-    flexDirection: "row",
+    backgroundColor: GREEN,
+    paddingTop: 48,
+    paddingBottom: 28,
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    backgroundColor: C.green,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
   },
   backBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: "rgba(255,255,255,0.2)",
+    position: "absolute",
+    left: 16,
+    top: 48,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
   },
-  backBtnText: {
-    fontSize: 24,
-    color: "#fff",
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#fff",
-  },
-  placeholder: {
-    width: 40,
-  },
-  content: {
-    flex: 1,
-    alignItems: "center",
-    paddingTop: 32,
-    paddingHorizontal: 20,
-  },
-  avatarContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: C.gray2,
+  backArrow: { color: "#fff", fontSize: 22, lineHeight: 24 },
+
+  avatarCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: "#fff",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  avatarEmoji: {
-    fontSize: 48,
-  },
-  guestText: {
-    fontSize: 24,
+  avatarIcon: { fontSize: 32 },
+
+  headerName: {
+    color: "#fff",
+    fontSize: 20,
     fontWeight: "800",
-    color: C.black,
-    marginBottom: 4,
   },
-  subtitle: {
-    fontSize: 14,
-    color: C.gray5,
-    marginBottom: 24,
+  headerPhone: {
+    color: "rgba(255,255,255,0.75)",
+    fontSize: 13,
+    marginTop: 4,
   },
-  loginBtn: {
-    backgroundColor: C.green,
-    paddingHorizontal: 32,
-    paddingVertical: 16,
+
+  /* ── Content ── */
+  content: { flex: 1, padding: 16 },
+
+  card: {
+    backgroundColor: "#fff",
     borderRadius: 12,
-    width: "100%",
-    alignItems: "center",
-  },
-  loginBtnText: {
-    color: "#fff",
-    fontSize: 16,
-    fontWeight: "700",
-  },
-  divider: {
-    height: 1,
-    backgroundColor: C.gray3,
-    width: "100%",
-    marginVertical: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: C.black,
-    alignSelf: "flex-start",
     marginBottom: 16,
+    paddingVertical: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
+
+  cardTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#333",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+
   menuItem: {
     flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
-    paddingVertical: 16,
-    width: "100%",
-    borderBottomWidth: 1,
-    borderBottomColor: C.gray2,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderTopWidth: 1,
+    borderTopColor: "#F0F0F0",
   },
-  menuIcon: {
-    fontSize: 24,
-    marginRight: 16,
+  menuText: { fontSize: 14, color: "#333" },
+  menuArrow: { fontSize: 18, color: "#999" },
+
+  /* ── Footer ── */
+  footer: { alignItems: "center", marginTop: 24 },
+  brand: {
+    fontSize: 36,
+    color: "#CCC",
+    fontWeight: "800",
+    letterSpacing: 4,
   },
-  menuText: {
-    fontSize: 16,
-    color: C.black,
-  },
+  version: { fontSize: 12, color: "#BBB", marginTop: 2 },
 });
