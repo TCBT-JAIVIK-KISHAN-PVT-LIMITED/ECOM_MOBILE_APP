@@ -4,6 +4,7 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 import type { RootState } from "../../../store/store";
 import type { CourseProgress } from "../types/course";
+import { RESET_APP } from "../../../store/resetAction";
 
 interface EducationState {
   /** List of purchased course IDs */
@@ -31,12 +32,7 @@ const educationSlice = createSlice({
 
     /** Sync all enrolled course IDs from user profile/backend */
     syncEnrolledCourses(state, action: PayloadAction<string[]>) {
-      const courseIds = action.payload || [];
-      for (const id of courseIds) {
-        if (!state.purchasedCourses.includes(id)) {
-          state.purchasedCourses.push(id);
-        }
-      }
+      state.purchasedCourses = action.payload || [];
     },
 
     /** Mark a lecture as complete */
@@ -76,6 +72,10 @@ const educationSlice = createSlice({
     resetEducation() {
       return initialState;
     },
+  },
+  extraReducers: (builder) => {
+    // ── Global reset on logout ──
+    builder.addCase(RESET_APP, () => initialState);
   },
 });
 

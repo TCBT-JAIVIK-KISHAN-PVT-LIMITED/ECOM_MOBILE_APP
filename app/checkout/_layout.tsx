@@ -5,6 +5,7 @@ export default function CheckoutLayout() {
     <Stack screenOptions={{
       headerShown: false,
     }}>
+      <Stack.Screen name="bill" />
       <Stack.Screen name="address" />
       <Stack.Screen name="success" />
     </Stack>

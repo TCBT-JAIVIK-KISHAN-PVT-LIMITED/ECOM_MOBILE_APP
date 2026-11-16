@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -16,16 +16,19 @@ import {
 
 import BannerCarousel from "../../../shared/components/BannerCarousel";
 import Header from "../../../shared/components/Header";
+import { useAppDispatch, useAppSelector } from "../../../shared/hooks/useRedux";
 import { useCart } from "../../cart/hooks/useCart";
+import { upsertProductData } from "../../cart/store/cartSlice";
 import VariantPickerModal from "../components/VariantPickerModal";
 import { useWishlist } from "../hooks/useWishlist";
-import { fetchAllProducts, fetchProductById, type ApiProductResponse } from "../services/product.api";
-import { getProductVariants, getVariantCartSummary, hasProductVariants } from "../utils/productVariants";
+import { fetchAllProducts, type ApiProductResponse } from "../services/product.api";
+import { getProductVariants, hasProductVariants } from "../utils/productVariants";
 
 const resolveProductId = (p: any) => p?._id || p?.zoho_item_id || p?.item_id || p?.id;
 
 export default function HomeScreen() {
   const { width } = useWindowDimensions();
+  const dispatch = useAppDispatch();
   const { add, remove, getQty } = useCart();
   const { isWishlisted, toggle } = useWishlist();
 
@@ -33,9 +36,8 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [variantProduct, setVariantProduct] = useState<any | null>(null);
-  const productDetailCache = useRef<Record<string, any>>({});
 
-  // Fetch products from API
+  // Fetch products from API (GET /products already includes variants)
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -46,44 +48,6 @@ export default function HomeScreen() {
           const list = Array.isArray(data) ? data : [];
           setProducts(list);
           setError(null);
-
-          (async () => {
-            const enrichedProducts: Record<string, any> = {};
-            const batchSize = 4;
-
-            for (let i = 0; i < list.length; i += batchSize) {
-              const batch = list.slice(i, i + batchSize);
-              const details = await Promise.all(
-                batch.map(async (item: any) => {
-                  const id = resolveProductId(item);
-                  if (!id) return null;
-                  if (productDetailCache.current[id]) return productDetailCache.current[id];
-
-                  try {
-                    const detail = await fetchProductById(id);
-                    productDetailCache.current[id] = detail;
-                    return detail;
-                  } catch {
-                    return null;
-                  }
-                })
-              );
-
-              details.forEach((detail) => {
-                const id = resolveProductId(detail);
-                if (id && hasProductVariants(detail)) enrichedProducts[id] = detail;
-              });
-            }
-
-            if (mounted && Object.keys(enrichedProducts).length > 0) {
-              setProducts((prev) =>
-                prev.map((item: any) => {
-                  const id = resolveProductId(item);
-                  return enrichedProducts[id] ? { ...item, ...enrichedProducts[id] } : item;
-                })
-              );
-            }
-          })();
         }
       } catch (err: any) {
         if (mounted) {
@@ -121,7 +85,8 @@ export default function HomeScreen() {
   // Helper to get price
   const getPrice = useCallback((p: any) => p.price || p.rate || 0, []);
 
-  const handleAddPress = useCallback(async (product: any) => {
+  // Instant, synchronous handler — no blocking network call before updating qty
+  const handleAddPress = useCallback((product: any) => {
     if (hasProductVariants(product)) {
       setVariantProduct(product);
       return;
@@ -130,31 +95,22 @@ export default function HomeScreen() {
     const id = getId(product);
     if (!id) return;
 
-    const cachedDetail = productDetailCache.current[id];
-    if (cachedDetail && hasProductVariants(cachedDetail)) {
-      setVariantProduct({ ...product, ...cachedDetail });
-      return;
-    }
+    dispatch(
+      upsertProductData({
+        id: String(id),
+        name: product.name || "Product",
+        priceRaw: getPrice(product),
+        unit: product.weight ? `${product.weight}${product.weight_unit || "g"}` : "",
+        image: getImage(product) || "https://via.placeholder.com/150",
+      })
+    );
 
-    try {
-      const detail = await fetchProductById(id);
-      productDetailCache.current[id] = detail;
-      if (hasProductVariants(detail)) {
-        const enrichedProduct = { ...product, ...detail };
-        setProducts((prev) =>
-          prev.map((item: any) => (getId(item) === id ? enrichedProduct : item))
-        );
-        setVariantProduct(enrichedProduct);
-        return;
-      }
-    } catch {}
-
-    add(id);
-  }, [add, getId]);
+    add(String(id));
+  }, [add, dispatch, getId, getImage, getPrice]);
 
   if (loading) {
     return (
-    <View style={styles.container}>
+      <View style={styles.container}>
         <StatusBar barStyle="dark-content" backgroundColor="#fff" />
         <Header
           searchPlaceholder='Search "Agnihotra"'
@@ -164,13 +120,13 @@ export default function HomeScreen() {
           <ActivityIndicator size="large" color="#196F1B" />
           <Text style={styles.loadingText}>Loading products...</Text>
         </View>
-    </View>
+      </View>
     );
   }
 
   if (error && products.length === 0) {
     return (
-    <View style={styles.container}>
+      <View style={styles.container}>
         <StatusBar barStyle="dark-content" backgroundColor="#fff" />
         <Header
           searchPlaceholder='Search "Agnihotra"'
@@ -191,7 +147,7 @@ export default function HomeScreen() {
             <Text style={styles.retryText}>Retry</Text>
           </TouchableOpacity>
         </View>
-    </View>
+      </View>
     );
   }
 
@@ -211,6 +167,23 @@ export default function HomeScreen() {
       >
         <BannerCarousel />
 
+        {/* Weekly Referral Contest Banner */}
+        <TouchableOpacity
+          style={styles.referralStrip}
+          activeOpacity={0.88}
+          onPress={() => router.push("/referral" as any)}
+        >
+          <Text style={styles.referralStripEmoji}>🏆</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.referralStripTitle}>
+              हर हफ्ते जीतें 1 बोरी गोवर्धन खनिज खाद FREE!
+            </Text>
+            <Text style={styles.referralStripSub}>
+              मित्रों को रेफर करें • साप्ताहिक लीडरबोर्ड देखें →
+            </Text>
+          </View>
+        </TouchableOpacity>
+
         {/* Recently Searched */}
         <Text style={styles.sectionTitle}>Recently Searched</Text>
         <ScrollView
@@ -224,7 +197,6 @@ export default function HomeScreen() {
               p={p}
               add={add}
               remove={remove}
-              getQty={getQty}
               onAddPress={handleAddPress}
               toggle={toggle}
               isWishlisted={isWishlisted}
@@ -249,7 +221,6 @@ export default function HomeScreen() {
               p={p}
               add={add}
               remove={remove}
-              getQty={getQty}
               onAddPress={handleAddPress}
               toggle={toggle}
               isWishlisted={isWishlisted}
@@ -277,7 +248,6 @@ export default function HomeScreen() {
                 p={item}
                 add={add}
                 remove={remove}
-                getQty={getQty}
                 onAddPress={handleAddPress}
                 toggle={toggle}
                 isWishlisted={isWishlisted}
@@ -308,7 +278,6 @@ const ProductCard = React.memo(function ProductCard({
   p,
   add,
   remove,
-  getQty,
   onAddPress,
   toggle,
   isWishlisted,
@@ -317,14 +286,31 @@ const ProductCard = React.memo(function ProductCard({
   getImage,
   getPrice,
 }: any) {
-  const id = getId(p);
+  const id = String(getId(p));
   const image = getImage(p);
   const price = getPrice(p);
-  const variantCount = getProductVariants(p).length;
+  const variants = useMemo(() => getProductVariants(p), [p]);
+  const variantCount = variants.length;
   const hasVariants = variantCount > 1;
-  const variantCart = hasVariants ? getVariantCartSummary(p, getQty) : null;
 
-  const qty = hasVariants ? variantCart?.totalQty ?? 0 : getQty(id);
+  // Subscribe only to this product's (or its variants') quantity so tapping +/-
+  // on one card never re-renders the other 50+ cards on HomeScreen.
+  const qty = useAppSelector((state) => {
+    if (!hasVariants) {
+      return state.cart.items[id] ?? 0;
+    }
+    return variants.reduce(
+      (sum, v) => sum + (state.cart.items[v.cartId] ?? 0),
+      0
+    );
+  });
+
+  const firstVariantCartId = useAppSelector((state) => {
+    if (!hasVariants) return null;
+    const found = variants.find((v) => (state.cart.items[v.cartId] ?? 0) > 0);
+    return found?.cartId ?? variants[0]?.cartId ?? null;
+  });
+
   const imgSize = cardWidth ? cardWidth - 16 : undefined;
 
   return (
@@ -396,9 +382,10 @@ const ProductCard = React.memo(function ProductCard({
           <View style={styles.stepper}>
             <TouchableOpacity
               style={styles.stepTouch}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 4 }}
               onPress={(e) => {
                 e.stopPropagation();
-                remove(hasVariants && variantCart?.firstCartId ? variantCart.firstCartId : id);
+                remove(hasVariants && firstVariantCartId ? firstVariantCartId : id);
               }}
             >
               <Text style={styles.stepText}>−</Text>
@@ -408,12 +395,13 @@ const ProductCard = React.memo(function ProductCard({
 
             <TouchableOpacity
               style={styles.stepTouch}
+              hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
               onPress={(e) => {
                 e.stopPropagation();
                 if (hasVariants) {
                   onAddPress(p);
                 } else {
-                  add(id);
+                  onAddPress(p);
                 }
               }}
             >
@@ -559,15 +547,15 @@ const styles = StyleSheet.create({
   },
 
   bottomArea: {
-    marginTop: 4,
+    marginTop: 10,
   },
 
   addBtn: {
     borderWidth: 1.5,
     borderColor: "#196F1B",
     borderRadius: 6,
-    minHeight: 38,
-    paddingVertical: 3,
+    minHeight: 32,
+    paddingVertical: 2,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#fff",
@@ -591,17 +579,21 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     backgroundColor: "#196F1B",
     borderRadius: 6,
+    minHeight: 32,
     paddingHorizontal: 2,
   },
 
   stepTouch: {
+    minWidth: 28,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center",
     paddingHorizontal: 6,
-    paddingVertical: 4,
   },
 
   stepText: {
     color: "#fff",
-    fontSize: 13,
+    fontSize: 15,
     fontWeight: "700",
   },
 
@@ -625,5 +617,33 @@ const styles = StyleSheet.create({
     flex: 1,
     margin: 4,
     maxWidth: "32%",
+  },
+  referralStrip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFBEB",
+    marginHorizontal: 12,
+    marginTop: 10,
+    marginBottom: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#F59E0B",
+    gap: 10,
+  },
+  referralStripEmoji: {
+    fontSize: 24,
+  },
+  referralStripTitle: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: "#1A1D1F",
+  },
+  referralStripSub: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#92400E",
+    marginTop: 2,
   },
 });

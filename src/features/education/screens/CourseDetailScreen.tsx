@@ -11,6 +11,7 @@ import {
   Animated,
   Dimensions,
   Image,
+  Linking,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -27,16 +28,14 @@ import { getDefaultCourse } from "../data/courses";
 import { fetchCourseLectures } from "../services/education.api";
 import {
   purchaseCourse,
+  syncEnrolledCourses,
   selectCourseProgress,
   selectIsPurchased,
 } from "../store/educationSlice";
 import type { Lecture } from "../types/course";
 
-// ─── Zoho Payments import ─────────────────────────────────────────────────────
+// ─── API Client ───────────────────────────────────────────────────────────────
 import { apiRequest } from "../../../shared/services/api.client";
-import {
-  openCheckout
-} from "../../checkout/services/zoho-payments";
 
 const { width } = Dimensions.get("window");
 const HERO_HEIGHT = 280;
@@ -69,20 +68,23 @@ export default function CourseDetailScreen() {
   useEffect(() => {
     let isMounted = true;
     async function checkEnrollment() {
-      // 1. Check local Redux user state
-      if (user?.enrolledCourses?.includes(course.id)) {
-        dispatch(purchaseCourse(course.id));
+      // 1. If not logged in, user has no course access
+      if (!user?.isLoggedIn) {
+        dispatch(syncEnrolledCourses([]));
         return;
       }
 
-      // 2. Query backend for real-time enrollment if logged in
-      if (user?.isLoggedIn && user?.userId) {
+      // 2. Sync local user enrolled courses immediately
+      dispatch(syncEnrolledCourses(user?.enrolledCourses || []));
+
+      // 3. Query backend for real-time enrollment
+      if (user?.userId) {
         try {
           const res = await apiRequest<{ enrolled_courses: string[] }>(
             `/users/${user.userId}/courses`
           );
-          if (isMounted && res?.enrolled_courses?.includes(course.id)) {
-            dispatch(purchaseCourse(course.id));
+          if (isMounted && res?.enrolled_courses) {
+            dispatch(syncEnrolledCourses(res.enrolled_courses));
           }
         } catch {
           // Ignore network errors
@@ -140,75 +142,33 @@ export default function CourseDetailScreen() {
     totalLectures > 0 ? (completedCount / totalLectures) * 100 : 0;
 
   // Format total duration
+  const totalDurationMinutes = lectures.reduce(
+    (sum, l) => sum + (l.duration || 0),
+    0
+  );
+
   const formatTotalDuration = (mins: number) => {
     const h = Math.floor(mins / 60);
     const m = mins % 60;
     return h > 0 ? `${h}h ${m}m` : `${m} min`;
   };
 
-  // ─── Purchase handler ─────────────────────────────────────────────────────
+  // ─── Purchase handler (opens web page) ────────────────────────────────────
   const handleBuyNow = useCallback(async () => {
-    setPurchasing(true);
+    const educationUrl = "https://www.tcbtjaivikkisan.com/education";
     try {
-      // 1. Create a payment session on the backend
-      const orderResponse = await apiRequest<{
-        paymentSessionId: string;
-        orderId: string;
-      }>("/education/orders", {
-        method: "POST",
-        body: {
-          courseId: course.id,
-          amount: course.price,
-          description: course.title,
-        },
-      });
-
-      // 2. Open Zoho Payments checkout
-      const result = await openCheckout(orderResponse.paymentSessionId);
-
-      if (result.status === "success") {
-        dispatch(purchaseCourse(course.id));
-        Alert.alert(
-          "🎉 Purchase Successful!",
-          "You now have full access to all lectures. Happy learning!",
-          [{ text: "Start Learning", style: "default" }]
-        );
-      } else if (result.status === "cancelled") {
-        // User cancelled — do nothing
-      } else {
-        Alert.alert(
-          "Payment Failed",
-          result.errorMessage || "Something went wrong. Please try again.",
-          [{ text: "OK" }]
-        );
-      }
+      setPurchasing(true);
+      await Linking.openURL(educationUrl);
     } catch (error: any) {
-      console.error("[Education] Purchase error:", error);
-      // If API is not set up yet, allow demo purchase
-      if (
-        error?.message?.includes("Network") ||
-        error?.message?.includes("fetch") ||
-        error?.message?.includes("404") ||
-        error?.message?.includes("500")
-      ) {
-        Alert.alert(
-          "Demo Mode",
-          "Payment backend is not configured yet. Would you like to unlock the course in demo mode?",
-          [
-            { text: "Cancel", style: "cancel" },
-            {
-              text: "Unlock (Demo)",
-              onPress: () => dispatch(purchaseCourse(course.id)),
-            },
-          ]
-        );
-      } else {
-        Alert.alert("Error", "Unable to process payment. Please try again.");
-      }
+      console.error("[Education] Failed to open URL:", error);
+      Alert.alert(
+        "Error",
+        `Unable to open course page. Please visit ${educationUrl}`
+      );
     } finally {
       setPurchasing(false);
     }
-  }, [course, dispatch]);
+  }, []);
 
   // ─── Lecture press handler ────────────────────────────────────────────────
   const handleLecturePress = useCallback(
@@ -327,7 +287,7 @@ export default function CourseDetailScreen() {
             <View style={styles.statItem}>
               <Ionicons name="time-outline" size={18} color={GREEN} />
               <Text style={styles.statValue}>
-                {formatTotalDuration(course.totalDuration)}
+                {formatTotalDuration(totalDurationMinutes || course.totalDuration)}
               </Text>
               <Text style={styles.statLabel}>Duration</Text>
             </View>
@@ -343,12 +303,25 @@ export default function CourseDetailScreen() {
 
           {/* Instructor */}
           <View style={styles.instructorRow}>
-            <View style={styles.instructorAvatar}>
-              <Ionicons name="person" size={18} color="#fff" />
-            </View>
-            <View>
-              <Text style={styles.instructorLabel}>Instructor</Text>
+            {course.instructorImage ? (
+              <Image
+                source={course.instructorImage}
+                style={styles.instructorAvatarImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <View style={styles.instructorAvatar}>
+                <Ionicons name="person" size={20} color="#fff" />
+              </View>
+            )}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.instructorLabel}>Course Instructor</Text>
               <Text style={styles.instructorName}>{course.instructor}</Text>
+              {course.instructorTitle && (
+                <Text style={styles.instructorSubTitle}>
+                  {course.instructorTitle}
+                </Text>
+              )}
             </View>
           </View>
 
@@ -383,7 +356,7 @@ export default function CourseDetailScreen() {
             <View style={styles.lectureHeaderRow}>
               <Text style={styles.sectionTitle}>Course Content</Text>
               <Text style={styles.lectureCount}>
-                {totalLectures} lectures • {formatTotalDuration(course.totalDuration)}
+                {totalLectures} lectures • {formatTotalDuration(totalDurationMinutes || course.totalDuration)}
               </Text>
             </View>
 
@@ -431,27 +404,21 @@ export default function CourseDetailScreen() {
             </Text>
           </TouchableOpacity>
         ) : (
-          <View style={styles.ctaRow}>
-            <View style={styles.ctaPriceWrap}>
-              <Text style={styles.ctaPriceLabel}>Course Price</Text>
-              <Text style={styles.ctaPrice}>₹{course.price}</Text>
-            </View>
-            <TouchableOpacity
-              style={styles.ctaBtnBuy}
-              onPress={handleBuyNow}
-              activeOpacity={0.8}
-              disabled={purchasing}
-            >
-              {purchasing ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <>
-                  <Ionicons name="cart" size={20} color="#fff" />
-                  <Text style={styles.ctaBtnText}>Buy Now</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity
+            style={styles.ctaBtnBuy}
+            onPress={handleBuyNow}
+            activeOpacity={0.8}
+            disabled={purchasing}
+          >
+            {purchasing ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <>
+                <Ionicons name="cart" size={20} color="#fff" />
+                <Text style={styles.ctaBtnText}>Buy Course</Text>
+              </>
+            )}
+          </TouchableOpacity>
         )}
       </View>
     </View>
@@ -592,36 +559,52 @@ const styles = StyleSheet.create({
   instructorRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 12,
+    gap: 14,
     marginHorizontal: 16,
     marginTop: 16,
     backgroundColor: "#fff",
-    borderRadius: 14,
+    borderRadius: 16,
     padding: 14,
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  instructorAvatarImage: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: "#E8F5E9",
+    borderWidth: 2,
+    borderColor: "#A5D6A7",
   },
   instructorAvatar: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: GREEN,
     alignItems: "center",
     justifyContent: "center",
   },
   instructorLabel: {
     fontSize: 11,
-    color: "#888",
-    fontWeight: "500",
+    color: "#6B7280",
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
   },
   instructorName: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "700",
-    color: "#222",
-    marginTop: 1,
+    color: "#1F2937",
+    marginTop: 2,
+  },
+  instructorSubTitle: {
+    fontSize: 12,
+    color: GREEN,
+    fontWeight: "500",
+    marginTop: 2,
   },
 
   // ── Sections ──
@@ -714,33 +697,14 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     elevation: 15,
   },
-  ctaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 16,
-  },
-  ctaPriceWrap: {
-    flex: 1,
-  },
-  ctaPriceLabel: {
-    fontSize: 11,
-    color: "#888",
-    fontWeight: "500",
-  },
-  ctaPrice: {
-    fontSize: 24,
-    fontWeight: "900",
-    color: "#222",
-    letterSpacing: -0.5,
-  },
   ctaBtnBuy: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    justifyContent: "center",
+    gap: 10,
     backgroundColor: GREEN,
     borderRadius: 14,
-    paddingHorizontal: 28,
-    paddingVertical: 14,
+    paddingVertical: 15,
     shadowColor: GREEN,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,

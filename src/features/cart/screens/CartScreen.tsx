@@ -1,41 +1,38 @@
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef } from "react";
 import {
-  ActivityIndicator,
-  Alert,
   Animated,
   Image,
-  Modal,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
-import { SvgXml } from "react-native-svg";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useAppDispatch, useAppSelector } from "../../../shared/hooks/useRedux";
-import { useOrder } from "../../checkout/hooks/useOrder";
-import { openCheckout } from "../../checkout/services/zoho-payments";
-import { setTempAddress, setTempAddressId } from "../../checkout/store/orderSlice";
-import {
-  calcShippingInBackground,
-  selectShippingCharge,
-  selectShippingData,
-  selectShippingError,
-  selectShippingStatus,
-} from "../../checkout/store/shippingSlice";
 import {
   addItem,
   removeItem,
   selectCartItems,
   selectCartProducts,
   selectSubtotal,
+  selectTotalItems,
   syncCart,
   updateItemAsync,
 } from "../store/cartSlice";
+
+// ─── PALETTE ──────────────────────────────────────────────────────────────────
+const GREEN = "#196F1B";
+const GREEN_LIGHT = "#EAF5EA";
+const GREEN_BORDER = "#C8E6C9";
+const BG = "#F4F6F8";
+const TEXT_DARK = "#1A1D1F";
+const TEXT_MID = "#5E646A";
+const TEXT_LIGHT = "#8E959E";
 
 // ─── IMAGE HELPER ─────────────────────────────────────────────────────────────
 const getImage = (p: any) =>
@@ -45,182 +42,30 @@ const getImage = (p: any) =>
     ? `https://cdn2.zohoecommerce.com/product-images/${p.image_name}/${p.image_document_id}/800x800?storefront_domain=products.tcbtjaivikkisan.com`
     : "https://via.placeholder.com/150");
 
-// ─── SVG ICONS ───────────────────────────────────────────────────────────────
-const BACK_ICON = `<svg width="28" height="28" viewBox="0 0 28 28" fill="none">
-  <circle cx="14" cy="14" r="13" stroke="#1E1E1E" stroke-width="1.5"/>
-  <path d="M15.5 9.5L11 14L15.5 18.5" stroke="#1E1E1E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-</svg>`;
-
-const CLOCK_ICON = `<svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-  <circle cx="9" cy="9" r="8" stroke="#333" stroke-width="1.4"/>
-  <path d="M9 5V9.5L12 11.5" stroke="#333" stroke-width="1.4" stroke-linecap="round"/>
-</svg>`;
-
-const BOX_ICON = `<svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-  <rect x="1.5" y="4.5" width="15" height="12" rx="1.5" stroke="#333" stroke-width="1.4"/>
-  <path d="M1.5 8h15" stroke="#333" stroke-width="1.4"/>
-  <path d="M6 1.5v3M12 1.5v3" stroke="#333" stroke-width="1.4" stroke-linecap="round"/>
-</svg>`;
-
-const PIN_ICON = `<svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-  <path d="M7 1C4.79 1 3 2.79 3 5c0 3 4 8 4 8s4-5 4-8c0-2.21-1.79-4-4-4Z" stroke="#555" stroke-width="1.3"/>
-  <circle cx="7" cy="5" r="1.5" stroke="#555" stroke-width="1.3"/>
-</svg>`;
-
-const HOME_ICON = `<svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-  <path d="M2 8L9 2L16 8V16H11V12H7V16H2V8Z" stroke="#333" stroke-width="1.4" stroke-linejoin="round"/>
-</svg>`;
-
-const COUPON_ICON = `<svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-  <rect x="1" y="4" width="16" height="10" rx="2" stroke="#196F1B" stroke-width="1.4"/>
-  <circle cx="9" cy="9" r="2" stroke="#196F1B" stroke-width="1.2"/>
-  <path d="M1 7.5a1.5 1.5 0 1 1 0 3" stroke="#196F1B" stroke-width="1.2"/>
-  <path d="M17 7.5a1.5 1.5 0 1 0 0 3" stroke="#196F1B" stroke-width="1.2"/>
-</svg>`;
-
-
-
-// ─── ADDRESS BOTTOM SHEET ────────────────────────────────────────────────────
-function AddressBottomSheet({
-  visible,
-  addresses,
-  selectedIdx,
-  onSelect,
-  onClose,
-  onPlaceOrder,
-  isProcessing,
-  userPhone,
-}: {
-  visible: boolean;
-  addresses: any[];
-  selectedIdx: number;
-  onSelect: (idx: number) => void;
-  onClose: () => void;
-  onPlaceOrder: () => void;
-  isProcessing?: boolean;
-  userPhone?: string | null;
-}) {
-
-  return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="slide"
-      onRequestClose={onClose}
-    >
-      {/* Dark backdrop — tap to close */}
-      <TouchableOpacity
-        style={styles.backdrop}
-        activeOpacity={1}
-        onPress={onClose}
-      />
-
-      <View style={styles.sheet}>
-        {/* Drag handle */}
-        <View style={styles.sheetHandle} />
-
-        {/* Header row: title + ✕ close */}
-        <View style={styles.sheetHeader}>
-          <Text style={styles.sheetTitle}>Select delivery location</Text>
-          <TouchableOpacity
-            onPress={onClose}
-            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            style={styles.sheetCloseBtn}
-          >
-            <Text style={styles.sheetCloseText}>✕</Text>
-          </TouchableOpacity>
-        </View>
-
-        <ScrollView
-          style={{ maxHeight: 300 }}
-          showsVerticalScrollIndicator={false}
-        >
-          {addresses.map((addr: any, idx: number) => (
-            <TouchableOpacity
-              key={idx}
-              style={[
-                styles.addrCard,
-                selectedIdx === idx && styles.addrCardSelected,
-              ]}
-              onPress={() => onSelect(idx)}
-              activeOpacity={0.8}
-            >
-              <View style={styles.addrIconBox}>
-                <SvgXml xml={HOME_ICON} width={18} height={18} />
-              </View>
-
-              <View style={styles.addrTextBlock}>
-                <Text style={styles.addrLabel}>{addr.label || "Home"}</Text>
-                <Text style={styles.addrLine} numberOfLines={2}>
-                  {addr.line1}{addr.city ? `, ${addr.city}` : ""}{addr.state ? `, ${addr.state}` : ""}
-                </Text>
-                <Text style={styles.addrPhone}>Phone: {addr.receiver_phone || userPhone || ""}</Text>
-              </View>
-
-              <View
-                style={[
-                  styles.radio,
-                  selectedIdx === idx && styles.radioSelected,
-                ]}
-              >
-                {selectedIdx === idx && <View style={styles.radioDot} />}
-              </View>
-            </TouchableOpacity>
-          ))}
-
-          {/* Add new address */}
-          <TouchableOpacity
-            style={styles.addAddrRow}
-            onPress={() => {
-              onClose();
-              router.push("/add-address" as any);
-            }}
-          >
-            <Text style={styles.addAddrPlus}>＋</Text>
-            <Text style={styles.addAddrText}>Add new address</Text>
-          </TouchableOpacity>
-        </ScrollView>
-
-        {/* CTA */}
-        <TouchableOpacity
-          style={[styles.sheetCta, isProcessing && styles.sheetCtaDisabled]}
-          onPress={onPlaceOrder}
-          disabled={isProcessing}
-          activeOpacity={0.88}
-        >
-          {isProcessing ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <ActivityIndicator size="small" color="#fff" />
-              <Text style={styles.sheetCtaText}>Processing…</Text>
-            </View>
-          ) : (
-            <Text style={styles.sheetCtaText}>Place Order</Text>
-          )}
-        </TouchableOpacity>
-      </View>
-    </Modal>
-  );
-}
-
-// ─── EMPTY CART ───────────────────────────────────────────────
+// ─── EMPTY CART ───────────────────────────────────────────────────────────────
 function EmptyCart() {
   return (
     <View style={styles.emptyContainer}>
-      <View style={styles.emptyContent}>
-        <Image
-          source={require("@/assets/images/shopping-cart.png")}
-          style={styles.emptyImage}
-          resizeMode="contain"
-        />
-        <Text style={styles.emptyTitle}>Empty Cart</Text>
+      <View style={styles.emptyCard}>
+        <View style={styles.emptyIconCircle}>
+          <Image
+            source={require("@/assets/images/shopping-cart.png")}
+            style={styles.emptyImage}
+            resizeMode="contain"
+          />
+        </View>
+        <Text style={styles.emptyTitle}>Your cart is empty</Text>
         <Text style={styles.emptySubtitle}>
-          There are no items to show up here,{"\n"}add items to buy.
+          Looks like you haven&apos;t added any organic products yet. Explore our
+          catalog to get started!
         </Text>
         <TouchableOpacity
           style={styles.shopBtn}
+          activeOpacity={0.88}
           onPress={() => router.push("/home" as any)}
         >
-          <Text style={styles.shopBtnText}>Start Shopping</Text>
+          <Ionicons name="bag-handle-outline" size={18} color="#fff" />
+          <Text style={styles.shopBtnText}>Browse Products</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -228,31 +73,36 @@ function EmptyCart() {
 }
 
 // ─── CART ITEM (memoized) ─────────────────────────────────────────────────────
-const CartItem = React.memo(function CartItem({ item }: any) {
+const CartItem = React.memo(function CartItem({
+  item,
+  isLast,
+}: {
+  item: any;
+  isLast: boolean;
+}) {
   const dispatch = useAppDispatch();
-  // Read live cart quantities so we always compute the correct next qty
   const cartItems = useAppSelector(selectCartItems);
   const scale = useRef(new Animated.Value(1)).current;
 
   const product = item.product;
-
   if (!product) return null;
 
   const qty = item.qty;
-  const price = product.priceRaw ?? 0;
+  const unitPrice = product.priceRaw ?? 0;
+  const lineTotal = unitPrice * qty;
   const weight = product.unit || "";
   const itemKey = product.id;
 
   const pulse = () =>
     Animated.sequence([
       Animated.timing(scale, {
-        toValue: 0.97,
-        duration: 60,
+        toValue: 0.98,
+        duration: 55,
         useNativeDriver: true,
       }),
       Animated.timing(scale, {
         toValue: 1,
-        duration: 60,
+        duration: 55,
         useNativeDriver: true,
       }),
     ]).start();
@@ -261,9 +111,7 @@ const CartItem = React.memo(function CartItem({ item }: any) {
     pulse();
     const currentQty = cartItems[itemKey] ?? 0;
     const newQty = currentQty + 1;
-    // Optimistic UI update
     dispatch(addItem(itemKey));
-    // Sync to PATCH /cart/items
     dispatch(updateItemAsync({ productId: itemKey, quantity: newQty }));
   };
 
@@ -271,39 +119,67 @@ const CartItem = React.memo(function CartItem({ item }: any) {
     pulse();
     const currentQty = cartItems[itemKey] ?? 0;
     const newQty = Math.max(0, currentQty - 1);
-    // Optimistic UI update
     dispatch(removeItem(itemKey));
-    // Sync to PATCH /cart/items (quantity: 0 removes the item server-side)
     dispatch(updateItemAsync({ productId: itemKey, quantity: newQty }));
   };
 
   return (
-    <Animated.View style={[styles.cartRow, { transform: [{ scale }] }]}>
-      <Image
-        source={{ uri: getImage(product) }}
-        style={styles.cartImage}
-        resizeMode="contain"
-      />
+    <Animated.View
+      style={[
+        styles.cartRow,
+        !isLast && styles.cartRowBorder,
+        { transform: [{ scale }] },
+      ]}
+    >
+      <View style={styles.imageBox}>
+        <Image
+          source={{ uri: getImage(product) }}
+          style={styles.cartImage}
+          resizeMode="contain"
+        />
+      </View>
 
       <View style={styles.cartInfo}>
-        <View style={styles.cartTopRow}>
-          <Text style={styles.cartName} numberOfLines={2}>
-            {product.name}
-          </Text>
-          {!!weight && <Text style={styles.cartWeight}>{weight}</Text>}
+        <Text style={styles.cartName} numberOfLines={2}>
+          {product.name}
+        </Text>
+
+        <View style={styles.metaRow}>
+          {!!weight && (
+            <View style={styles.weightPill}>
+              <Text style={styles.cartWeight}>{weight}</Text>
+            </View>
+          )}
+          <Text style={styles.unitPriceText}>₹{unitPrice} / unit</Text>
         </View>
 
         <View style={styles.cartBottomRow}>
-          <Text style={styles.cartPrice}>₹{price}</Text>
+          <Text style={styles.lineTotalPrice}>₹{lineTotal}</Text>
 
           <View style={styles.stepper}>
-            <TouchableOpacity onPress={handleRemove}>
-              <Text style={styles.stepText}>−</Text>
+            <TouchableOpacity
+              style={styles.stepBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 6 }}
+              onPress={handleRemove}
+              activeOpacity={0.7}
+            >
+              {qty === 1 ? (
+                <Ionicons name="trash-outline" size={14} color="#fff" />
+              ) : (
+                <Text style={styles.stepText}>−</Text>
+              )}
             </TouchableOpacity>
 
-            <Text style={styles.stepQty}>{qty}</Text>
+            <View style={styles.stepQtyBox}>
+              <Text style={styles.stepQty}>{qty}</Text>
+            </View>
 
-            <TouchableOpacity onPress={handleAdd}>
+            <TouchableOpacity
+              style={styles.stepBtn}
+              hitSlop={{ top: 10, bottom: 10, left: 6, right: 10 }}
+              onPress={handleAdd}
+              activeOpacity={0.7}
+            >
               <Text style={styles.stepText}>+</Text>
             </TouchableOpacity>
           </View>
@@ -313,581 +189,159 @@ const CartItem = React.memo(function CartItem({ item }: any) {
   );
 });
 
-// ─── MAIN ─────────────────────────────────────────────────────────────────────
+// ─── MAIN CART SCREEN ─────────────────────────────────────────────────────────
 export default function CartScreen() {
   const dispatch = useAppDispatch();
   const cartItems = useAppSelector(selectCartProducts);
   const subtotal = useAppSelector(selectSubtotal);
-  const userId = useAppSelector((state) => state.user.userId);
-  const userPhone = useAppSelector((state) => state.user.phone);
-  const userAddresses = useAppSelector((state) => state.user.addresses) || [];
+  const totalItems = useAppSelector(selectTotalItems);
 
   const isEmpty = cartItems.length === 0;
 
-  // Sync cart from server on mount
   useEffect(() => {
     dispatch(syncCart());
   }, [dispatch]);
 
-  const [sheetVisible, setSheetVisible] = useState(false);
-  const [selectedAddressIdx, setSelectedAddressIdx] = useState(0);
-  const [isProcessing, setIsProcessing] = useState(false);
-
-  const addresses = userAddresses;
-  const prevAddrCount = useRef(addresses.length);
-
-  // ── Auto-select newest address when user adds one, clamp on delete ──
-  useEffect(() => {
-    if (addresses.length > prevAddrCount.current) {
-      // A new address was added → select it (it's the last one)
-      setSelectedAddressIdx(addresses.length - 1);
-    } else if (addresses.length < prevAddrCount.current && selectedAddressIdx >= addresses.length) {
-      // An address was deleted and current selection is out of bounds → clamp
-      setSelectedAddressIdx(Math.max(0, addresses.length - 1));
-    }
-    prevAddrCount.current = addresses.length;
-  }, [addresses.length]);
-
-  // ── Coupon state ──
-  const [couponCode, setCouponCode] = useState('');
-  const [couponStatus, setCouponStatus] = useState<'idle' | 'loading' | 'applied' | 'error'>('idle');
-  const [couponDiscount, setCouponDiscount] = useState(0);
-  const [couponMessage, setCouponMessage] = useState('');
-  const [couponId, setCouponId] = useState<string | null>(null);
-  const [couponType, setCouponType] = useState<'flat' | 'percent' | null>(null);
-  const [couponValue, setCouponValue] = useState(0);
-
-  const { submitOrderAsync } = useOrder();
-
-  const selectedAddress = addresses[selectedAddressIdx] ?? addresses[0] ?? null;
-
-  // ── Shipping from Redux (pre-calculated in background) ─────────────────────
-  const shippingStatus = useAppSelector(selectShippingStatus);
-  const shippingData = useAppSelector(selectShippingData);
-  const shippingError = useAppSelector(selectShippingError);
-  const shippingCharge = useAppSelector(selectShippingCharge);
-
-  // Map to the shape used by the UI
-  const shipping = shippingStatus === 'success' && shippingData
-    ? { status: 'success' as const, data: shippingData }
-    : shippingStatus === 'loading'
-      ? { status: 'loading' as const }
-      : shippingStatus === 'error'
-        ? { status: 'error' as const, message: shippingError || 'Could not fetch rate' }
-        : { status: 'idle' as const };
-
-  // Re-trigger shipping calc when address changes (pincode change)
-  useEffect(() => {
-    const pincode = Number(selectedAddress?.pincode);
-    console.log("[CART] 📍 Address changed → selectedAddress:", JSON.stringify({
-      _id: selectedAddress?._id,
-      label: selectedAddress?.label,
-      pincode: selectedAddress?.pincode,
-      city: selectedAddress?.city,
-      state: selectedAddress?.state,
-      line1: selectedAddress?.line1,
-    }));
-    console.log("[CART] 📍 Selected address index:", selectedAddressIdx, "| Total addresses:", addresses.length);
-
-    if (!pincode || cartItems.length === 0) {
-      console.log("[CART] ⚠️ Skipping shipping calc — pincode:", pincode, "cartItems:", cartItems.length);
-      return;
-    }
-
-    console.log("[CART] 🚚 Dispatching shipping calc with pincode:", pincode);
-    // Only recalculate if the pincode differs from what's already cached
-    dispatch(calcShippingInBackground({ pincode }));
-  }, [selectedAddress?.pincode, selectedAddress?._id]);
-
-  const grandTotal = Math.max(0, subtotal + Math.round(shippingCharge) - couponDiscount);
-
-  // ── Coupon handlers ──
-  const handleApplyCoupon = useCallback(async () => {
-    const code = couponCode.trim().toUpperCase();
-    console.log('[COUPON] Applying code:', code);
-    if (!code) return;
-    setCouponStatus('loading');
-    try {
-      const { validateCoupon } = await import('../services/coupon.api');
-      console.log('[COUPON] Calling POST /coupon/validate with code:', code);
-      const coupon = await validateCoupon(code);
-      console.log('[COUPON] Validate response:', JSON.stringify(coupon));
-
-      // Calculate discount based on coupon type
-      let disc = 0;
-      if (coupon.type === 'percent') {
-        disc = Math.round((subtotal * coupon.value) / 100);
-      } else {
-        disc = coupon.value;
-      }
-      console.log('[COUPON] Type:', coupon.type, '| Value:', coupon.value, '| Subtotal:', subtotal, '| Discount:', disc, '| CouponId:', coupon._id);
-
-      setCouponId(coupon._id);
-      setCouponType(coupon.type);
-      setCouponValue(coupon.value);
-      setCouponDiscount(disc);
-      setCouponCode(coupon.name);
-      setCouponMessage(
-        coupon.type === 'percent'
-          ? `${coupon.value}% off applied! You save ₹${disc}`
-          : `Flat ₹${disc} off applied!`
-      );
-      setCouponStatus('applied');
-    } catch (err: any) {
-      console.error('[COUPON] Validation failed:', err?.message || err);
-      setCouponId(null);
-      setCouponDiscount(0);
-      setCouponMessage(err?.message || 'Invalid coupon code');
-      setCouponStatus('error');
-    }
-  }, [couponCode, subtotal]);
-
-  const handleRemoveCoupon = useCallback(() => {
-    setCouponCode('');
-    setCouponDiscount(0);
-    setCouponMessage('');
-    setCouponStatus('idle');
-    setCouponId(null);
-    setCouponType(null);
-    setCouponValue(0);
-  }, []);
-
-  // ── Recalculate coupon discount when subtotal changes (for percentage coupons) ──
-  useEffect(() => {
-    if (couponStatus !== 'applied' || !couponType) return;
-    let newDisc = 0;
-    if (couponType === 'percent') {
-      newDisc = Math.round((subtotal * couponValue) / 100);
-    } else {
-      newDisc = couponValue;
-    }
-    console.log('[COUPON] Recalc → subtotal:', subtotal, '| type:', couponType, '| value:', couponValue, '| newDisc:', newDisc);
-    setCouponDiscount(newDisc);
-    setCouponMessage(
-      couponType === 'percent'
-        ? `${couponValue}% off applied! You save ₹${newDisc}`
-        : `Flat ₹${newDisc} off applied!`
-    );
-  }, [subtotal, couponStatus, couponType, couponValue]);
-
-  // ── Sync selected address into orderSlice whenever it changes ──────────────
-  useEffect(() => {
-    if (!selectedAddress) return;
-    // Store the address _id for the POST /orders call
-    if (selectedAddress._id) {
-      dispatch(setTempAddressId(selectedAddress._id));
-    }
-    dispatch(
-      setTempAddress({
-        name: selectedAddress.receiver_name || selectedAddress.label || "Customer",
-        phone: selectedAddress.receiver_phone || selectedAddress.phone || "",
-        street: selectedAddress.line1 || "",
-        city: selectedAddress.city || "",
-        state: selectedAddress.state || "",
-        pincode: selectedAddress.pincode || "",
-      })
-    );
-  }, [selectedAddress, dispatch]);
-
-  // ── Place Order → Zoho Checkout (skips PaymentScreen) ──────────────────────
-  const handlePlaceOrder = async () => {
-    if (!selectedAddress || isProcessing) return;
-
-    // Guard: ensure the address has a backend _id before proceeding
-    let addressId = selectedAddress._id;
-    if (!addressId) {
-      console.warn('[CHECKOUT] ⚠️ selectedAddress has no _id — fetching fresh addresses from backend...');
-      // Auto-heal: re-fetch user addresses from backend to get _ids
-      try {
-        const { fetchUserProfile } = await import('../../profile/services/user.api');
-        const { setAddresses } = await import('../../auth/store/userSlice');
-        if (userId) {
-          const profile = await fetchUserProfile(userId);
-          if (profile?.addresses && profile.addresses.length > 0) {
-            dispatch(setAddresses(profile.addresses));
-            // Find the matching address by comparing fields
-            const match = profile.addresses.find((a: any) =>
-              a.line1 === selectedAddress.line1 &&
-              a.pincode === selectedAddress.pincode &&
-              a.receiver_phone === selectedAddress.receiver_phone
-            );
-            if (match?._id) {
-              addressId = match._id;
-              console.log('[CHECKOUT] ✅ Recovered _id:', addressId);
-            }
-          }
-        }
-      } catch (fetchErr: any) {
-        console.error('[CHECKOUT] Failed to fetch addresses:', fetchErr?.message);
-      }
-
-      // If still no _id after auto-heal, show error
-      if (!addressId) {
-        console.error('[CHECKOUT] ❌ Could not recover address _id!', JSON.stringify(selectedAddress));
-        Alert.alert(
-          'Address Error',
-          'Your address is missing an ID. Please delete this address, re-add it, and try again.',
-        );
-        return;
-      }
-    }
-
-    try {
-      setIsProcessing(true);
-
-      // Ensure tempAddressId is set in Redux (in case useEffect hasn't fired yet)
-      dispatch(setTempAddressId(addressId));
-
-      // 1. Create order on backend → returns orderId + paymentSessionId
-      console.log('[CHECKOUT] Creating order...');
-      console.log('[CHECKOUT] Selected address:', JSON.stringify(selectedAddress));
-      console.log('[CHECKOUT] Address _id:', addressId);
-
-      // Debug: check what the backend cart looks like
-      try {
-        const { fetchCart } = await import('../../cart/services/cart.api');
-        const backendCart = await fetchCart();
-        console.log('[CHECKOUT] Backend cart before order:', JSON.stringify(backendCart));
-        console.log('[CHECKOUT] Backend cart items count:', backendCart?.items?.length);
-      } catch (cartErr: any) {
-        console.warn('[CHECKOUT] Could not fetch backend cart:', cartErr?.message);
-      }
-
-      // Local cart state
-      console.log('[CHECKOUT] Local cart items:', JSON.stringify(cartItems.map((i: any) => ({
-        id: i.product?.id || i.product?.item_id,
-        name: i.product?.name,
-        qty: i.qty,
-      }))));
-
-      let result;
-      try {
-        result = await submitOrderAsync(addressId, couponId || undefined);
-      } catch (orderErr: any) {
-        console.error('[CHECKOUT] submitOrderAsync threw:', orderErr);
-        console.error('[CHECKOUT] Error type:', typeof orderErr);
-        console.error('[CHECKOUT] Error keys:', orderErr ? Object.keys(orderErr) : 'null');
-        console.error('[CHECKOUT] Error message:', orderErr?.message);
-        console.error('[CHECKOUT] Error string:', String(orderErr));
-        throw new Error(
-          orderErr?.message || String(orderErr) || 'Failed to create order'
-        );
-      }
-
-      console.log('[CHECKOUT] Order result:', JSON.stringify(result));
-      const { orderId, paymentSessionId } = result;
-      console.log('[CHECKOUT] Order created:', orderId, 'session:', paymentSessionId);
-
-      if (!paymentSessionId) {
-        throw new Error('No payment session received from server');
-      }
-
-      // 2. Open Zoho Payments checkout
-      console.log('[CHECKOUT] Opening Zoho checkout...');
-      setSheetVisible(false); // close address sheet if open
-
-      const paymentResult = await openCheckout(paymentSessionId);
-      console.log('[CHECKOUT] Payment result:', paymentResult.status);
-
-      if (paymentResult.status === 'cancelled') {
-        Alert.alert('Payment Cancelled', 'You can try again when ready.');
-        return;
-      }
-
-      if (paymentResult.status === 'failed') {
-        Alert.alert(
-          'Payment Failed',
-          paymentResult.errorMessage || 'Please try again.',
-        );
-        return;
-      }
-
-      // 3. Payment success → navigate immediately!
-      //    (Polling moved to SuccessScreen — runs in background with visual indicator)
-      console.log('[CHECKOUT] Payment success from SDK — navigating to success screen');
-      router.push('/checkout/success');
-    } catch (err: any) {
-      console.error('[CHECKOUT] Final catch error:', err);
-      console.error('[CHECKOUT] Error message:', err?.message);
-      console.error('[CHECKOUT] Error string:', String(err));
-      Alert.alert(
-        'Order Failed',
-        err?.message || String(err) || 'Could not place order. Please try again.',
-      );
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
   return (
-    <View style={styles.container}>
-      <StatusBar barStyle="dark-content" />
+    <SafeAreaView style={styles.safeArea} edges={["top"]}>
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
+      {/* ── Top Header ── */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.push("/home" as any)}>
-          <SvgXml xml={BACK_ICON} width={28} height={28} />
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => router.push("/home" as any)}
+          activeOpacity={0.75}
+        >
+          <Ionicons name="arrow-back" size={20} color={TEXT_DARK} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Checkout</Text>
-        <View style={{ width: 28 }} />
+
+        <View style={styles.headerCenter}>
+          <Text style={styles.headerTitle}>My Cart</Text>
+          {!isEmpty && (
+            <View style={styles.headerCountBadge}>
+              <Text style={styles.headerCountText}>
+                {totalItems} {totalItems === 1 ? "item" : "items"}
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <View style={{ width: 36 }} />
       </View>
+
+      {/* ── 2-Step Checkout Progress Bar ── */}
+      {!isEmpty && (
+        <View style={styles.stepBar}>
+          <View style={styles.stepItem}>
+            <View style={[styles.stepDot, styles.stepDotActive]}>
+              <Text style={styles.stepDotTextActive}>1</Text>
+            </View>
+            <Text style={styles.stepLabelActive}>Review Cart</Text>
+          </View>
+
+          <View style={styles.stepConnector} />
+
+          <View style={styles.stepItem}>
+            <View style={styles.stepDot}>
+              <Text style={styles.stepDotText}>2</Text>
+            </View>
+            <Text style={styles.stepLabel}>Bill & Payment</Text>
+          </View>
+        </View>
+      )}
 
       {isEmpty ? (
         <EmptyCart />
       ) : (
         <>
-          {/* ── Scrollable content (no address card here) ── */}
           <ScrollView
             contentContainerStyle={styles.scrollContent}
             showsVerticalScrollIndicator={false}
           >
-            {/* Deliverables */}
+            {/* ── Deliverables Card ── */}
             <View style={styles.card}>
               <View style={styles.sectionHeaderRow}>
-                <SvgXml xml={CLOCK_ICON} width={18} height={18} />
-                <View style={{ marginLeft: 8 }}>
+                <View style={styles.iconBadge}>
+                  <Ionicons name="cube-outline" size={18} color={GREEN} />
+                </View>
+                <View style={{ marginLeft: 10, flex: 1 }}>
                   <Text style={styles.sectionTitle}>Deliverables</Text>
                   <Text style={styles.sectionSubtitle}>
-                    Shipped in package(s)
+                    {cartItems.length}{" "}
+                    {cartItems.length === 1 ? "product" : "products"} · Shipped
+                    in secure package(s)
                   </Text>
                 </View>
+
+                <TouchableOpacity
+                  style={styles.addMorePill}
+                  onPress={() => router.push("/home" as any)}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="add" size={14} color={GREEN} />
+                  <Text style={styles.addMoreText}>Add more</Text>
+                </TouchableOpacity>
               </View>
 
               <View style={styles.divider} />
 
-              {cartItems.map((item: any) => (
+              {cartItems.map((item: any, index: number) => (
                 <CartItem
                   key={item.product?.id ?? item.product?.item_id}
                   item={item}
+                  isLast={index === cartItems.length - 1}
                 />
               ))}
             </View>
 
-            {/* Coupon */}
-            <View style={styles.card}>
-              <View style={styles.sectionHeaderRow}>
-                <SvgXml xml={COUPON_ICON} width={18} height={18} />
-                <Text style={[styles.sectionTitle, { marginLeft: 8 }]}>
-                  Apply Coupon
-                </Text>
-              </View>
-
-              <View style={styles.divider} />
-
-              {couponStatus === 'applied' ? (
-                /* ── Applied state ── */
-                <View style={styles.couponAppliedRow}>
-                  <View style={styles.couponAppliedLeft}>
-                    <View style={styles.couponBadge}>
-                      <Text style={styles.couponBadgeText}>{couponCode}</Text>
-                    </View>
-                    <Text style={styles.couponSuccessMsg}>{couponMessage}</Text>
-                  </View>
-                  <TouchableOpacity onPress={handleRemoveCoupon} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                    <Text style={styles.couponRemoveText}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
-                /* ── Input state ── */
-                <>
-                  <View style={styles.couponInputRow}>
-                    <TextInput
-                      style={styles.couponInput}
-                      placeholder="Enter coupon code"
-                      placeholderTextColor="#999"
-                      value={couponCode}
-                      onChangeText={(t) => { setCouponCode(t.toUpperCase()); if (couponStatus === 'error') setCouponStatus('idle'); }}
-                      autoCapitalize="characters"
-                      autoCorrect={false}
-                      editable={couponStatus !== 'loading'}
-                    />
-                    <TouchableOpacity
-                      style={[
-                        styles.couponApplyBtn,
-                        (!couponCode.trim() || couponStatus === 'loading') && styles.couponApplyBtnDisabled,
-                      ]}
-                      onPress={handleApplyCoupon}
-                      disabled={!couponCode.trim() || couponStatus === 'loading'}
-                      activeOpacity={0.85}
-                    >
-                      {couponStatus === 'loading' ? (
-                        <ActivityIndicator size="small" color="#fff" />
-                      ) : (
-                        <Text style={styles.couponApplyText}>Apply</Text>
-                      )}
-                    </TouchableOpacity>
-                  </View>
-                  {couponStatus === 'error' && (
-                    <Text style={styles.couponErrorMsg}>{couponMessage}</Text>
-                  )}
-                </>
-              )}
-            </View>
-
-            {/* Bill */}
-            <View style={styles.card}>
-              <View style={styles.sectionHeaderRow}>
-                <SvgXml xml={BOX_ICON} width={18} height={18} />
-                <Text style={[styles.sectionTitle, { marginLeft: 8 }]}>
-                  Bill Details
-                </Text>
-              </View>
-
-              <View style={styles.divider} />
-
-              <View style={styles.billRow}>
-                <Text style={styles.billLabel}>Items total</Text>
-                <Text style={styles.billValue}>₹{subtotal}</Text>
-              </View>
-
-              <View style={[styles.billRow, { alignItems: 'flex-start' }]}>
-                <View style={{ flex: 1, marginRight: 12 }}>
-                  <Text style={styles.billLabel}>Delivery charge</Text>
-                  {shipping.status === 'success' && shipping.data.courier ? (
-                    <Text style={styles.courierTag} numberOfLines={2}>
-                      {shipping.data.courier} · {shipping.data.estimatedDelivery}
-                    </Text>
-                  ) : null}
-                </View>
-                {shipping.status === 'loading' ? (
-                  <ActivityIndicator size="small" color="#196F1B" />
-                ) : shipping.status === 'success' ? (
-                  <Text style={[styles.billValue, shippingCharge === 0 && styles.billValueFree]}>
-                    {shippingCharge === 0 ? 'FREE' : `₹${Math.round(shippingCharge)}`}
-                  </Text>
-                ) : shipping.status === 'error' ? (
-                  <Text style={styles.billValueError}>–</Text>
-                ) : (
-                  <Text style={styles.billValue}>–</Text>
-                )}
-              </View>
-
-              {shipping.status === 'error' && (
-                <Text style={styles.shippingErrorText}>⚠️ {shipping.message}</Text>
-              )}
-
-              {couponDiscount > 0 && (
-                <View style={styles.billRow}>
-                  <Text style={[styles.billLabel, { color: '#196F1B' }]}>Coupon discount</Text>
-                  <Text style={[styles.billValue, { color: '#196F1B', fontWeight: '600' }]}>−₹{couponDiscount}</Text>
-                </View>
-              )}
-
-              <View style={styles.divider} />
-
-              <View style={styles.billRow}>
-                <Text style={styles.billLabelBold}>Grand Total</Text>
-                <Text style={styles.billValueBold}>₹{grandTotal}</Text>
-              </View>
-            </View>
-
-            {/* Policy */}
-            <View style={styles.card}>
-              <Text style={styles.sectionTitle}>Cancellation Policy</Text>
-              <View style={styles.divider} />
-              <Text style={styles.policyText}>
-                Once order is placed, any cancellation may result in a fee. In case of unexpected delays leading to order cancellation, a complete help will be provided.
+            {/* ── Next-Step Info Banner ── */}
+            <View style={styles.infoBanner}>
+              <Ionicons
+                name="shield-checkmark-outline"
+                size={18}
+                color={GREEN}
+              />
+              <Text style={styles.infoBannerText}>
+                Coupons, delivery charges & address selection are on the next
+                step.
               </Text>
             </View>
           </ScrollView>
 
-          {/* ── Fixed bottom zone: address card + payment button ── */}
+          {/* ── Sticky Bottom Bar ── */}
           <View style={styles.bottomZone}>
-            {addresses.length === 0 ? (
-              /* ── No address: Blinkit-style Add Address prompt ── */
-              <TouchableOpacity
-                style={styles.addAddrPrompt}
-                activeOpacity={0.85}
-                onPress={() => router.push("/add-address" as any)}
-              >
-                <View style={styles.addAddrPromptLeft}>
-                  <View style={styles.addAddrIconCircle}>
-                    <SvgXml xml={PIN_ICON} width={16} height={16} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.addAddrPromptTitle}>Add delivery address</Text>
-                    <Text style={styles.addAddrPromptSub}>Select a location to see product availability</Text>
-                  </View>
-                </View>
-                <Text style={styles.addAddrPromptArrow}>›</Text>
-              </TouchableOpacity>
-            ) : (
-              /* ── Has address: normal address card ── */
-              <View style={styles.addressCard}>
-                <View style={styles.addressTopRow}>
-                  <View style={styles.addressRow}>
-                    <SvgXml xml={PIN_ICON} width={14} height={14} />
-                    <Text style={styles.addressLabel}>
-                      {selectedAddress?.label ?? "Home"}
-                    </Text>
-                  </View>
+            <View style={styles.bottomPriceBlock}>
+              <Text style={styles.bottomTotalLabel}>
+                ITEMS TOTAL ({totalItems})
+              </Text>
+              <Text style={styles.bottomTotalValue}>₹{subtotal}</Text>
+              <Text style={styles.bottomSubNote}>+ Delivery on next step</Text>
+            </View>
 
-                  <TouchableOpacity
-                    style={styles.changeBtn}
-                    onPress={() => setSheetVisible(true)}
-                  >
-                    <Text style={styles.changeBtnText}>Change</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <Text style={styles.addressText}>
-                  {[selectedAddress?.line1, selectedAddress?.line2, selectedAddress?.city, selectedAddress?.state]
-                    .filter(Boolean)
-                    .join(", ")}
-                </Text>
-                {(selectedAddress?.receiver_phone || userPhone) ? (
-                  <Text style={styles.addressPhone}>📞 {selectedAddress?.receiver_phone || userPhone}</Text>
-                ) : null}
-              </View>
-            )}
-
-            {/* Place Order button — disabled until shipping rate loads */}
             <TouchableOpacity
-              style={[
-                styles.paymentBtn,
-                (addresses.length === 0 || isProcessing || shipping.status !== 'success') && styles.paymentBtnDisabled,
-              ]}
-              disabled={addresses.length === 0 || isProcessing || shipping.status !== 'success'}
-              onPress={handlePlaceOrder}
+              style={styles.checkoutBtn}
+              onPress={() => router.push("/checkout/bill" as any)}
               activeOpacity={0.88}
             >
-              {isProcessing ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <ActivityIndicator size="small" color="#fff" />
-                  <Text style={styles.paymentBtnText}>Processing…</Text>
-                </View>
-              ) : shipping.status === 'loading' ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <ActivityIndicator size="small" color="#fff" />
-                  <Text style={styles.paymentBtnText}>Calculating delivery…</Text>
-                </View>
-              ) : shipping.status === 'error' ? (
-                <Text style={styles.paymentBtnText}>Delivery unavailable</Text>
-              ) : (
-                <Text style={styles.paymentBtnText}>Place Order · ₹{grandTotal}</Text>
-              )}
+              <Text style={styles.checkoutBtnText}>Proceed to Checkout</Text>
+              <View style={styles.checkoutArrowCircle}>
+                <Ionicons name="arrow-forward" size={16} color={GREEN} />
+              </View>
             </TouchableOpacity>
           </View>
-
-          {/* Address Bottom Sheet */}
-          <AddressBottomSheet
-            visible={sheetVisible}
-            addresses={addresses}
-            selectedIdx={selectedAddressIdx}
-            onSelect={(idx) => { setSelectedAddressIdx(idx); setSheetVisible(false); }}
-            onClose={() => setSheetVisible(false)}
-            onPlaceOrder={handlePlaceOrder}
-            isProcessing={isProcessing}
-            userPhone={userPhone}
-          />
         </>
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
 // ─── STYLES ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#F2F2F2" },
+  safeArea: {
+    flex: 1,
+    backgroundColor: "#fff",
+  },
 
   header: {
     height: 56,
@@ -896,444 +350,408 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#F0F2F5",
   },
-  headerTitle: { fontSize: 16, fontWeight: "700" },
+  backBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#F4F6F8",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerCenter: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  headerTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: TEXT_DARK,
+  },
+  headerCountBadge: {
+    backgroundColor: GREEN_LIGHT,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: GREEN_BORDER,
+  },
+  headerCountText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: GREEN,
+  },
 
-  // ScrollView only holds deliverables / bill / policy — no extra bottom padding needed
+  // ── Step Progress Bar ──
+  stepBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FAFDF9",
+    paddingVertical: 10,
+    paddingHorizontal: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: "#EBF2EB",
+  },
+  stepItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  stepDot: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: "#E4E7EB",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepDotActive: {
+    backgroundColor: GREEN,
+  },
+  stepDotText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: TEXT_MID,
+  },
+  stepDotTextActive: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#fff",
+  },
+  stepLabel: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: TEXT_LIGHT,
+  },
+  stepLabelActive: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: GREEN,
+  },
+  stepConnector: {
+    width: 36,
+    height: 1.5,
+    backgroundColor: "#D8E2D8",
+    marginHorizontal: 12,
+  },
+
   scrollContent: {
-    padding: 12,
-    paddingBottom: 190,
+    backgroundColor: BG,
+    flexGrow: 1,
+    padding: 14,
+    paddingBottom: 120,
   },
 
   card: {
     backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
   },
 
-  sectionHeaderRow: { flexDirection: "row", alignItems: "center" },
-  sectionTitle: { fontSize: 14, fontWeight: "700" },
-  sectionSubtitle: { fontSize: 11, color: "#888" },
-
-  divider: { height: 1, backgroundColor: "#eee", marginVertical: 8 },
-
-  cartRow: { flexDirection: "row", marginBottom: 10 },
-  cartImage: {
-    width: 70,
-    height: 70,
+  sectionHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  iconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: GREEN_LIGHT,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: TEXT_DARK,
+  },
+  sectionSubtitle: {
+    fontSize: 11,
+    color: TEXT_LIGHT,
+    marginTop: 1,
+  },
+  addMorePill: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: GREEN_LIGHT,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
     borderRadius: 8,
-    backgroundColor: "#F7F7F7",
+    gap: 2,
   },
-  cartInfo: { flex: 1, marginLeft: 10 },
+  addMoreText: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: GREEN,
+  },
 
-  cartTopRow: { flexDirection: "row", justifyContent: "space-between" },
-  cartName: { fontSize: 13, fontWeight: "600", flex: 1 },
-  cartWeight: { fontSize: 11, color: "#888" },
+  divider: {
+    height: 1,
+    backgroundColor: "#F0F2F5",
+    marginVertical: 12,
+  },
+
+  cartRow: {
+    flexDirection: "row",
+    paddingVertical: 10,
+  },
+  cartRowBorder: {
+    borderBottomWidth: 1,
+    borderBottomColor: "#F3F5F7",
+  },
+  imageBox: {
+    width: 74,
+    height: 74,
+    borderRadius: 12,
+    backgroundColor: "#F8FAF8",
+    borderWidth: 1,
+    borderColor: "#EDF2ED",
+    padding: 4,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cartImage: {
+    width: "100%",
+    height: "100%",
+  },
+  cartInfo: {
+    flex: 1,
+    marginLeft: 12,
+    justifyContent: "space-between",
+  },
+  cartName: {
+    fontSize: 13.5,
+    fontWeight: "700",
+    color: TEXT_DARK,
+    lineHeight: 18,
+  },
+  metaRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginTop: 4,
+  },
+  weightPill: {
+    backgroundColor: "#F2F4F7",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 5,
+  },
+  cartWeight: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: TEXT_MID,
+  },
+  unitPriceText: {
+    fontSize: 11.5,
+    color: TEXT_LIGHT,
+    fontWeight: "500",
+  },
 
   cartBottomRow: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 8,
+    alignItems: "center",
+    marginTop: "auto",
+    paddingTop: 10,
   },
-  cartPrice: { fontWeight: "700" },
+  lineTotalPrice: {
+    fontSize: 15,
+    fontWeight: "800",
+    color: TEXT_DARK,
+  },
 
   stepper: {
     flexDirection: "row",
-    backgroundColor: "#196F1B",
-    borderRadius: 8,
+    backgroundColor: GREEN,
+    borderRadius: 6,
+    alignItems: "center",
+    minHeight: 32,
+    paddingHorizontal: 2,
+  },
+  stepBtn: {
+    minWidth: 28,
+    height: 30,
+    paddingHorizontal: 6,
+    justifyContent: "center",
     alignItems: "center",
   },
-  stepText: { color: "#fff", paddingHorizontal: 10, fontSize: 16 },
-  stepQty: { color: "#fff", fontWeight: "700" },
-
-  billRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginVertical: 4,
+  stepText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "700",
   },
-  billLabel: { color: "#444" },
-  billValue: { color: "#444" },
-  billValueFree: { color: "#196F1B", fontWeight: "600" },
-  billValueError: { color: "#EF4444", fontWeight: "600" },
-  courierTag: { fontSize: 11, color: "#196F1B", marginTop: 2, fontWeight: "500" },
-  shippingErrorText: { fontSize: 11, color: "#92400E", marginBottom: 4 },
-  billLabelBold: { fontWeight: "700" },
-  billValueBold: { fontWeight: "700" },
+  stepQtyBox: {
+    minWidth: 20,
+    paddingHorizontal: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepQty: {
+    color: "#fff",
+    fontWeight: "700",
+    fontSize: 12,
+    textAlign: "center",
+  },
 
-  policyText: { fontSize: 12, color: "#666" },
-
-  // ── Coupon ──
-  couponInputRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  // ── Info Banner ──
+  infoBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: GREEN_LIGHT,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderWidth: 1,
+    borderColor: GREEN_BORDER,
     gap: 8,
   },
-  couponInput: {
+  infoBannerText: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: '#333',
-    backgroundColor: '#FAFAFA',
-    letterSpacing: 1,
-    fontWeight: '600',
-  },
-  couponApplyBtn: {
-    backgroundColor: '#196F1B',
-    paddingHorizontal: 20,
-    paddingVertical: 11,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    minWidth: 70,
-  },
-  couponApplyBtnDisabled: {
-    backgroundColor: '#A5C8A6',
-  },
-  couponApplyText: {
-    color: '#fff',
-    fontWeight: '700',
-    fontSize: 13,
-  },
-  couponErrorMsg: {
-    fontSize: 11,
-    color: '#EF4444',
-    marginTop: 6,
-    fontWeight: '500',
-  },
-  couponAppliedRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    backgroundColor: '#EBF5EB',
-    borderRadius: 10,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#C8E6C9',
-  },
-  couponAppliedLeft: {
-    flex: 1,
-    marginRight: 8,
-  },
-  couponBadge: {
-    backgroundColor: '#196F1B',
-    borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    alignSelf: 'flex-start',
-    marginBottom: 4,
-  },
-  couponBadgeText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1,
-  },
-  couponSuccessMsg: {
     fontSize: 12,
-    color: '#2E7D32',
-    fontWeight: '500',
-  },
-  couponRemoveText: {
-    fontSize: 16,
-    color: '#EF4444',
-    fontWeight: '700',
-    padding: 4,
+    color: "#255827",
+    fontWeight: "600",
+    lineHeight: 16,
   },
 
-  // ── Fixed bottom zone (address + button) ──
+  // ── Sticky Bottom Bar ──
   bottomZone: {
-    position: "absolute", // ✅ KEY FIX
+    position: "absolute",
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: "#F2F2F2",
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 12,
-
-    borderTopWidth: 1,
-    borderTopColor: "#E8E8E8",
-
-    elevation: 8,
-    shadowColor: "#000",
-    shadowOpacity: 0.06,
-    shadowRadius: 5,
-  },
-
-  addressCard: {
     backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
-  },
-
-  addressTopRow: {
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 8,
     flexDirection: "row",
+    alignItems: "flex-end",
     justifyContent: "space-between",
-    alignItems: "center",
+    borderTopWidth: 1,
+    borderTopColor: "#ECEEF2",
+    elevation: 12,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: -3 },
   },
-  addressRow: { flexDirection: "row", alignItems: "center" },
-  addressLabel: { marginLeft: 5, fontWeight: "600" },
-  addressText: { fontSize: 12, color: "#666", marginTop: 6 },
-  addressPhone: { fontSize: 12, color: "#333", marginTop: 4, fontWeight: "500", letterSpacing: 0.3 },
-
-  changeBtn: {
-    borderWidth: 1,
-    borderColor: "#196F1B",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 6,
+  bottomPriceBlock: {
+    flex: 1,
+    marginRight: 12,
   },
-  changeBtnText: {
-    color: "#196F1B",
-    fontSize: 12,
+  bottomTotalLabel: {
+    fontSize: 10,
+    fontWeight: "700",
+    color: TEXT_LIGHT,
+    letterSpacing: 0.6,
+  },
+  bottomTotalValue: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: TEXT_DARK,
+    marginTop: 1,
+  },
+  bottomSubNote: {
+    fontSize: 10.5,
+    color: GREEN,
     fontWeight: "600",
   },
 
-  paymentBtn: {
-    backgroundColor: "#196F1B",
-    height: 50,
-    borderRadius: 12,
-    justifyContent: "center",
+  checkoutBtn: {
+    backgroundColor: GREEN,
+    height: 40,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginBottom: 2,
+    shadowColor: GREEN,
+    shadowOpacity: 0.22,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
   },
-  paymentBtnDisabled: {
-    backgroundColor: "#A5C8A6",
-  },
-  paymentBtnText: {
+  checkoutBtnText: {
     color: "#fff",
     fontWeight: "700",
-    fontSize: 15,
+    fontSize: 13,
   },
-
-  // ── Add-address prompt (Blinkit style) ──
-  addAddrPrompt: {
-    flexDirection: "row",
-    alignItems: "center",
+  checkoutArrowCircle: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
     backgroundColor: "#fff",
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 10,
-    borderWidth: 1.5,
-    borderColor: "#196F1B",
-  },
-  addAddrPromptLeft: {
-    flex: 1,
-    flexDirection: "row",
     alignItems: "center",
-    gap: 10,
-  },
-  addAddrIconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: "#EAF5EA",
     justifyContent: "center",
-    alignItems: "center",
-    marginRight: 10,
-  },
-  addAddrPromptTitle: {
-    fontSize: 14,
-    fontWeight: "700",
-    color: "#1E1E1E",
-  },
-  addAddrPromptSub: {
-    fontSize: 11,
-    color: "#888",
-    marginTop: 2,
-  },
-  addAddrPromptArrow: {
-    fontSize: 22,
-    color: "#196F1B",
-    fontWeight: "300",
-    marginLeft: 8,
   },
 
   // ── Empty Cart ──
   emptyContainer: {
     flex: 1,
-    backgroundColor: "#F2F2F2",
+    backgroundColor: BG,
     justifyContent: "center",
     alignItems: "center",
+    paddingHorizontal: 24,
   },
-  emptyContent: { alignItems: "center", paddingHorizontal: 20 },
-  emptyImage: { width: 150, height: 150, marginBottom: 16 },
-  emptyTitle: { fontSize: 20, fontWeight: "700", marginBottom: 6 },
+  emptyCard: {
+    width: "100%",
+    backgroundColor: "#fff",
+    borderRadius: 20,
+    paddingVertical: 36,
+    paddingHorizontal: 24,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  emptyIconCircle: {
+    width: 130,
+    height: 130,
+    borderRadius: 65,
+    backgroundColor: GREEN_LIGHT,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 18,
+  },
+  emptyImage: { width: 90, height: 90 },
+  emptyTitle: {
+    fontSize: 19,
+    fontWeight: "800",
+    color: TEXT_DARK,
+    marginBottom: 8,
+  },
   emptySubtitle: {
-    color: "#777",
+    color: TEXT_MID,
     textAlign: "center",
     fontSize: 13,
-    lineHeight: 18,
-    marginBottom: 20,
+    lineHeight: 19,
+    marginBottom: 24,
   },
   shopBtn: {
-    backgroundColor: "#196F1B",
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  shopBtnText: { color: "#fff", fontWeight: "600" },
-
-  // ── Address Bottom Sheet ──
-  backdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.45)",
-  },
-
-  sheet: {
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 16,
-    paddingBottom: 36,
-    paddingTop: 12,
-  },
-
-  sheetHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#DDD",
-    alignSelf: "center",
-    marginBottom: 14,
-  },
-
-  // Title row + close button
-  sheetHeader: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 14,
-  },
-
-  sheetTitle: {
-    fontSize: 15,
-    fontWeight: "700",
-  },
-
-  sheetCloseBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: "#F0F0F0",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  sheetCloseText: {
-    fontSize: 13,
-    color: "#444",
-    fontWeight: "600",
-  },
-
-  addrCard: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    backgroundColor: "#F9F9F9",
+    gap: 8,
+    backgroundColor: GREEN,
+    paddingHorizontal: 24,
+    paddingVertical: 13,
     borderRadius: 12,
-    padding: 12,
-    marginBottom: 10,
-    borderWidth: 1.5,
-    borderColor: "#F0F0F0",
   },
-
-  addrCardSelected: {
-    borderColor: "#196F1B",
-    backgroundColor: "#F0FAF0",
-  },
-
-  addrIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: "#EFEFEF",
-    justifyContent: "center",
-    alignItems: "center",
-    marginRight: 10,
-  },
-
-  addrTextBlock: { flex: 1 },
-
-  addrLabel: {
-    fontSize: 13,
-    fontWeight: "700",
-    marginBottom: 2,
-  },
-
-  addrLine: {
-    fontSize: 12,
-    color: "#555",
-    lineHeight: 16,
-  },
-
-  addrPhone: {
-    fontSize: 11,
-    color: "#888",
-    marginTop: 3,
-  },
-
-  radio: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 1.5,
-    borderColor: "#CCC",
-    justifyContent: "center",
-    alignItems: "center",
-    marginLeft: 8,
-    marginTop: 2,
-  },
-
-  radioSelected: { borderColor: "#196F1B" },
-
-  radioDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: "#196F1B",
-  },
-
-  addAddrRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-  },
-
-  addAddrPlus: {
-    fontSize: 18,
-    color: "#196F1B",
-    fontWeight: "700",
-    marginRight: 8,
-  },
-
-  addAddrText: {
-    fontSize: 13,
-    color: "#196F1B",
-    fontWeight: "600",
-  },
-
-  sheetCta: {
-    backgroundColor: "#196F1B",
-    height: 50,
-    borderRadius: 12,
-    justifyContent: "center",
-    alignItems: "center",
-    marginTop: 8,
-  },
-
-  sheetCtaText: {
+  shopBtnText: {
     color: "#fff",
     fontWeight: "700",
-    fontSize: 15,
-  },
-
-  sheetCtaDisabled: {
-    backgroundColor: "#999",
+    fontSize: 14,
   },
 });

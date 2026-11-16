@@ -22,6 +22,12 @@ const MENU_SECTIONS = [
   {
     title: "My Activity",
     items: [
+      {
+        icon: "🏆",
+        label: "Refer & Win Free Khad",
+        badge: "FREE",
+        route: "/referral",
+      },
       { icon: "📦", label: "My Orders", badge: null, route: "/orders" },
       { icon: "❤️", label: "Wishlist", badge: null, route: "/wishlist" },
       { icon: "⭐", label: "Reviews & Ratings", badge: null, route: null },

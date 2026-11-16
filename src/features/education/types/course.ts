@@ -41,6 +41,10 @@ export interface Course {
   totalDuration: number;
   /** Instructor name */
   instructor: string;
+  /** Instructor photo or require() asset */
+  instructorImage?: any;
+  /** Instructor designation / title */
+  instructorTitle?: string;
   /** Short tagline */
   tagline: string;
   /** Number of enrolled students (for social proof) */

@@ -1,5 +1,5 @@
 // src/features/cart/hooks/useCart.ts
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import {
   addItem,
   clearCart,
@@ -28,6 +28,11 @@ export function useCart() {
   const total       = useAppSelector(selectTotal);
   const loading     = useAppSelector(selectCartLoading);
 
+  // Keep a live ref to cart quantities so rapid taps within the same render frame
+  // always compute the right next quantity and `add`/`remove` keep stable references.
+  const cartRef = useRef(cart);
+  cartRef.current = cart;
+
   // Sync cart from server on mount
   useEffect(() => {
     dispatch(syncCart());
@@ -35,34 +40,50 @@ export function useCart() {
 
   const add = useCallback(
     (id: string) => {
-      // Read current qty BEFORE dispatching the optimistic update
-      const currentQty = cart[id] ?? 0;
+      const key = String(id);
+      const currentQty = cartRef.current[key] ?? 0;
       const newQty = currentQty + 1;
-      dispatch(addItem(id));
-      dispatch(updateItemAsync({ productId: id, quantity: newQty }));
-    },
-    [dispatch, cart]
-  );
-
-  const remove = useCallback(
-    (id: string) => {
-      const currentQty = cart[id] ?? 0;
-      const newQty = Math.max(0, currentQty - 1);
-      dispatch(removeItem(id));
-      dispatch(updateItemAsync({ productId: id, quantity: newQty }));
-    },
-    [dispatch, cart]
-  );
-
-  const clear = useCallback(
-    (id: string) => {
-      dispatch(clearItem(id));
-      dispatch(updateItemAsync({ productId: id, quantity: 0 }));
+      cartRef.current = { ...cartRef.current, [key]: newQty };
+      dispatch(addItem(key));
+      dispatch(updateItemAsync({ productId: key, quantity: newQty }));
     },
     [dispatch]
   );
 
-  const clearAll = useCallback(() => dispatch(clearCart()), [dispatch]);
+  const remove = useCallback(
+    (id: string) => {
+      const key = String(id);
+      const currentQty = cartRef.current[key] ?? 0;
+      const newQty = Math.max(0, currentQty - 1);
+      const nextCart = { ...cartRef.current };
+      if (newQty <= 0) {
+        delete nextCart[key];
+      } else {
+        nextCart[key] = newQty;
+      }
+      cartRef.current = nextCart;
+      dispatch(removeItem(key));
+      dispatch(updateItemAsync({ productId: key, quantity: newQty }));
+    },
+    [dispatch]
+  );
+
+  const clear = useCallback(
+    (id: string) => {
+      const key = String(id);
+      const nextCart = { ...cartRef.current };
+      delete nextCart[key];
+      cartRef.current = nextCart;
+      dispatch(clearItem(key));
+      dispatch(updateItemAsync({ productId: key, quantity: 0 }));
+    },
+    [dispatch]
+  );
+
+  const clearAll = useCallback(() => {
+    cartRef.current = {};
+    dispatch(clearCart());
+  }, [dispatch]);
 
   const getQty = useCallback((id: string) => cart[id] ?? 0, [cart]);
 
@@ -84,20 +105,23 @@ export function useCart() {
 
 export function useProductQty(productId: string) {
   const dispatch = useAppDispatch();
-  const cart = useAppSelector(selectCartItems);
-  const qty  = cart[productId] ?? 0;
+  const qty = useAppSelector((state) => state.cart.items[productId] ?? 0);
+  const qtyRef = useRef(qty);
+  qtyRef.current = qty;
 
   const add = useCallback(() => {
-    const currentQty = cart[productId] ?? 0;
+    const newQty = (qtyRef.current ?? 0) + 1;
+    qtyRef.current = newQty;
     dispatch(addItem(productId));
-    dispatch(updateItemAsync({ productId, quantity: currentQty + 1 }));
-  }, [dispatch, productId, cart]);
+    dispatch(updateItemAsync({ productId, quantity: newQty }));
+  }, [dispatch, productId]);
 
   const remove = useCallback(() => {
-    const currentQty = cart[productId] ?? 0;
+    const newQty = Math.max(0, (qtyRef.current ?? 0) - 1);
+    qtyRef.current = newQty;
     dispatch(removeItem(productId));
-    dispatch(updateItemAsync({ productId, quantity: Math.max(0, currentQty - 1) }));
-  }, [dispatch, productId, cart]);
+    dispatch(updateItemAsync({ productId, quantity: newQty }));
+  }, [dispatch, productId]);
 
   return { qty, add, remove };
 }
