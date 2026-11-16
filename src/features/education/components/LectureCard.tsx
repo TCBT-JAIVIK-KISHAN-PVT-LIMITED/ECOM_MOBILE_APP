@@ -29,7 +29,11 @@ export default function LectureCard({
   isCurrentlyPlaying,
   onPress,
 }: LectureCardProps) {
-  const formatDuration = (mins: number) => `${mins} min`;
+  const formatDuration = (mins: number) => {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return h > 0 ? `${h}h ${m}m` : `${m} min`;
+  };
 
   return (
     <TouchableOpacity

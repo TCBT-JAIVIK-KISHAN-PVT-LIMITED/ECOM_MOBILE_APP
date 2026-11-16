@@ -22,13 +22,21 @@ import { useDispatch } from "react-redux";
 import { sendOtp, verifyOtp } from "../services/auth.service";
 import { useOtpAutoRead } from "../hooks/useOtpAutoRead";
 
-const { width } = Dimensions.get("window");
+const { width, height } = Dimensions.get("window");
 
 const SCALE = width / 375;
-const CARD_W = Math.round(110 * SCALE);
-const CARD_H = Math.round(121 * SCALE);
 const CARD_GAP = Math.round(8 * SCALE);
+const CARD_H = Math.min(
+  Math.round(121 * SCALE),
+  Math.floor((height * 0.46) / 3) - CARD_GAP
+);
+const CARD_W = Math.round(CARD_H * (110 / 121));
 const ITEM_WIDTH = CARD_W + CARD_GAP;
+
+const preFramedImages = new Set([
+  require("@/assets/images/product13.png"),
+  require("@/assets/images/product14.png"),
+]);
 
 const images = [
   require("@/assets/images/product1.png"),
@@ -42,10 +50,10 @@ const images = [
   require("@/assets/images/product9.png"),
   require("@/assets/images/product10.png"),
   require("@/assets/images/product11.png"),
+  require("@/assets/images/product12.png"),
   require("@/assets/images/product13.png"),
   require("@/assets/images/product14.png"),
   require("@/assets/images/product15.png"),
-
 ];
 
 // ─── Image Row ────────────────────────────────────────────────────────────────
@@ -82,28 +90,39 @@ const ImageRow = ({
   return (
     <View style={{ height: CARD_H + CARD_GAP, overflow: "hidden", opacity: rowOpacity }}>
       <Animated.View style={{ flexDirection: "row", transform: [{ translateX }] }}>
-        {tripled.map((img, i) => (
-          <View
-            key={i}
-            style={{
-              width: CARD_W,
-              height: CARD_H,
-              marginRight: CARD_GAP,
-              marginVertical: CARD_GAP / 2,
-              borderRadius: Math.round(25 * SCALE),
-              backgroundColor: "#F7F9FA",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 10,
-            }}
-          >
-            <Image
-              source={img}
-              style={{ width: Math.round(63 * SCALE), height: Math.round(95 * SCALE) }}
-              resizeMode="contain"
-            />
-          </View>
-        ))}
+        {tripled.map((img, i) => {
+          const isPreFramed = preFramedImages.has(img);
+          return (
+            <View
+              key={i}
+              style={{
+                width: CARD_W,
+                height: CARD_H,
+                marginRight: CARD_GAP,
+                marginVertical: CARD_GAP / 2,
+                borderRadius: Math.round(25 * (CARD_W / 110)),
+                backgroundColor: "#F7F9FA",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: isPreFramed ? 0 : 10,
+                overflow: "hidden",
+              }}
+            >
+              <Image
+                source={img}
+                style={
+                  isPreFramed
+                    ? { width: CARD_W, height: CARD_H }
+                    : {
+                      width: Math.round(CARD_W * (63 / 110)),
+                      height: Math.round(CARD_H * (95 / 121)),
+                    }
+                }
+                resizeMode="contain"
+              />
+            </View>
+          );
+        })}
       </Animated.View>
     </View>
   );
@@ -159,9 +178,7 @@ export default function LoginScreen() {
           })
         );
 
-        if (user.enrolled_courses?.length) {
-          dispatch(syncEnrolledCourses(user.enrolled_courses));
-        }
+        dispatch(syncEnrolledCourses(user.enrolled_courses || []));
         // First-time user (no name) → collect name before landing
         const isFirstTime = !user.name || !user.name.trim();
         const defaultDest = isFirstTime ? "/complete-profile" : "/landing";
@@ -304,26 +321,24 @@ export default function LoginScreen() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
-      {/* 3 scrolling rows — fades out smoothly when keyboard opens */}
-      <Animated.View style={{ opacity: imageRowsOpacity }}>
-        <ImageRow rowImages={images.slice(0, 5)} reverse={false} rowOpacity={1} />
-        <ImageRow rowImages={images.slice(5, 10)} reverse={true} rowOpacity={1} />
-        <ImageRow rowImages={images.slice(10, 15)} reverse={false} rowOpacity={1} />
-      </Animated.View>
+      {/* Image area — takes only the space left above the sheet and clips
+          extra rows, so the login form is never pushed off-screen. */}
+      <View style={styles.imageArea}>
+        {/* 3 scrolling rows — fades out smoothly when keyboard opens */}
+        <Animated.View style={{ opacity: imageRowsOpacity }}>
+          <ImageRow rowImages={images.slice(0, 5)} reverse={false} rowOpacity={1} />
+          <ImageRow rowImages={images.slice(5, 10)} reverse={true} rowOpacity={1} />
+          <ImageRow rowImages={images.slice(10, 15)} reverse={false} rowOpacity={1} />
+        </Animated.View>
 
-      {/* Fade gradient */}
-      <LinearGradient
-        colors={["transparent", "rgba(255,255,255,0.6)", "#ffffff"]}
-        locations={[0, 0.5, 1]}
-        style={{
-          position: "absolute",
-          top: ROW_H * 2,
-          left: 0,
-          right: 0,
-          height: ROW_H * 2 + 10,
-        }}
-        pointerEvents="none"
-      />
+        {/* Fade gradient — anchored to the bottom of the visible image area */}
+        <LinearGradient
+          colors={["transparent", "rgba(255,255,255,0.6)", "#ffffff"]}
+          locations={[0, 0.5, 1]}
+          style={[styles.imageFade, { height: ROW_H * 1.5 }]}
+          pointerEvents="none"
+        />
+      </View>
 
       {/* Bottom sheet — slides up exactly by keyboard height */}
       <Animated.View
@@ -466,14 +481,23 @@ const styles = StyleSheet.create({
     width: 90,
     height: 90,
   },
+  imageArea: {
+    flex: 1,
+    overflow: "hidden",
+  },
+  imageFade: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
   sheet: {
     backgroundColor: "#FFFFFF",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 16,
-    paddingTop: 40,
-    paddingBottom: 32,
-    flex: 1,
+    paddingTop: 16,
+    paddingBottom: 24,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: -2 },
     shadowOpacity: 0.06,
@@ -516,6 +540,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: "#111",
     backgroundColor: "transparent",
+    paddingVertical: 0,
   },
   button: {
     backgroundColor: "#196F1B",
@@ -555,6 +580,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
     color: "#111",
     backgroundColor: "transparent",
+    paddingVertical: 0,
   },
   changeNumber: {
     color: "#196F1B",

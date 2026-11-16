@@ -22,7 +22,7 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.tcbt.myapp",
       "minSdkVersion": 24,
-      "versionCode": 4
+      "versionCode": 5
     },
     "web": {
       "output": "static",

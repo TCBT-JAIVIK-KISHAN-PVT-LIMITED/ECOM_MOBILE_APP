@@ -27,6 +27,9 @@ const GREEN_PRIMARY = "#196F1B";
 const GREEN_DARK = "#0F5A14";
 const GREEN_LIGHT = "#E8F5E9";
 const GOLD = "#FFB700";
+const WHATSAPP_GREEN = "#25D366";
+const SUPPORT_PHONE_DISPLAY = "+91 88712 71446";
+const SUPPORT_WHATSAPP_URL = "https://wa.me/918871271446";
 
 // ─── Card Data ────────────────────────────────────────────────────────────────
 const CATEGORIES = [
@@ -75,6 +78,7 @@ const CATEGORIES = [
 // ─── Drawer Menu Items ────────────────────────────────────────────────────────
 const MENU_ITEMS = [
   { label: "Home", icon: "home-outline", route: "/(tabs)/home" },
+  { label: "Refer & Win Free Khad", icon: "trophy-outline", route: "/referral" },
   { label: "Categories", icon: "grid-outline", route: "/(tabs)/categories" },
   { label: "My Orders", icon: "receipt-outline", route: "/(tabs)/orders" },
   { label: "My Cart", icon: "cart-outline", route: "/(tabs)/cart" },
@@ -246,11 +250,13 @@ export default function LandingScreen() {
         router.push("/education" as any);
         break;
       case "food":
-        Alert.alert(
-          "Coming Soon 🚀",
-          "TCBT Food is coming soon! Stay tuned for pure & fresh organic food products.",
-          [{ text: "OK", style: "default" }]
-        );
+        router.push({
+          pathname: "/(tabs)/categories/[categoryId]",
+          params: {
+            categoryId: "food",
+            categoryName: "TCBT Food",
+          },
+        } as any);
         break;
       case "pgs":
         router.push({
@@ -269,6 +275,15 @@ export default function LandingScreen() {
     setTimeout(() => {
       router.push(route as any);
     }, 300);
+  };
+
+  const handleWhatsAppSupport = () => {
+    Linking.openURL(SUPPORT_WHATSAPP_URL).catch(() => {
+      Alert.alert(
+        "Customer Support",
+        `WhatsApp us at ${SUPPORT_PHONE_DISPLAY}`
+      );
+    });
   };
 
   return (
@@ -316,18 +331,28 @@ export default function LandingScreen() {
             />
           </View>
 
-          {/* Profile */}
-          <TouchableOpacity
-            style={styles.profileBtn}
-            onPress={() => router.push("/profile")}
-            activeOpacity={0.7}
-          >
-            <Image
-              source={require("@/assets/icons/user_1.png")}
-              style={styles.profileIcon}
-              resizeMode="contain"
-            />
-          </TouchableOpacity>
+          {/* Right Actions: WhatsApp Support + Profile */}
+          <View style={styles.headerRightActions}>
+            <TouchableOpacity
+              style={styles.whatsappHeaderBtn}
+              onPress={handleWhatsAppSupport}
+              activeOpacity={0.75}
+            >
+              <Ionicons name="logo-whatsapp" size={20} color="#fff" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.profileBtn}
+              onPress={() => router.push("/profile")}
+              activeOpacity={0.7}
+            >
+              <Image
+                source={require("@/assets/icons/user_1.png")}
+                style={styles.profileIcon}
+                resizeMode="contain"
+              />
+            </TouchableOpacity>
+          </View>
         </LinearGradient>
       </Animated.View>
 
@@ -341,73 +366,124 @@ export default function LandingScreen() {
           contentContainerStyle={styles.bodyScrollContent}
           showsVerticalScrollIndicator={false}
         >
-        {/* Welcome text */}
-        <View style={styles.welcomeWrap}>
-          <Text style={styles.welcomeLabel}>Welcome to</Text>
-          <Text style={styles.welcomeTitle}>
-            TCBT <Text style={styles.welcomeHighlight}>Jaivik Kisan</Text>
-          </Text>
-          <Text style={styles.welcomeSubtext}>
-            Explore our world of organic living
-          </Text>
-        </View>
-
-        {/* ── Meeting Banner ── */}
-        <TouchableOpacity
-          style={styles.meetingBanner}
-          activeOpacity={0.85}
-          onPress={() => Linking.openURL("https://meeting.zoho.in/vtnx-gyl-hjt")}
-        >
-          <View style={styles.meetingTop}>
-            <View style={styles.meetingBadge}>
-              <Ionicons name="videocam" size={12} color="#196F1B" />
-              <Text style={styles.meetingBadgeText}>Quick Access</Text>
-            </View>
-            <Text style={styles.meetingTitle}>Join the Zoho Meeting</Text>
-            <Text style={styles.meetingDesc}>
-              Panchmahabhut aur krishi charcha ke liye live meeting mein join karein.
+          {/* Welcome text */}
+          <View style={styles.welcomeWrap}>
+            <Text style={styles.welcomeLabel}>Welcome to</Text>
+            <Text style={styles.welcomeTitle}>
+              TCBT <Text style={styles.welcomeHighlight}>Jaivik Kisan</Text>
+            </Text>
+            <Text style={styles.welcomeSubtext}>
+              Explore our world of organic living
             </Text>
           </View>
-          <View style={styles.meetingBottom}>
-            <View style={styles.meetingJoinTextWrap}>
-              <Text style={styles.meetingJoinLabel}>Join Meeting</Text>
-            </View>
-            <View style={styles.meetingJoinBtn}>
-              <Ionicons name="open-outline" size={18} color="#fff" />
-            </View>
-          </View>
-        </TouchableOpacity>
 
-        {/* 2×2 Grid */}
-        <View style={styles.gridContainer}>
-          <View style={styles.gridRow}>
-            {CATEGORIES.slice(0, 2).map((cat, i) => (
-              <CategoryCard
-                key={cat.id}
-                item={cat}
-                index={i}
-                onPress={() => handleCardPress(cat.id)}
-              />
-            ))}
-          </View>
-          <View style={styles.gridRow}>
-            {CATEGORIES.slice(2, 4).map((cat, i) => (
-              <CategoryCard
-                key={cat.id}
-                item={cat}
-                index={i + 2}
-                onPress={() => handleCardPress(cat.id)}
-              />
-            ))}
-          </View>
-        </View>
+          {/* ── Meeting Banner ── */}
+          <TouchableOpacity
+            style={styles.meetingBanner}
+            activeOpacity={0.85}
+            onPress={() => Linking.openURL("https://meeting.zoho.in/vtnx-gyl-hjt")}
+          >
+            <View style={styles.meetingTop}>
+              <View style={styles.meetingHeaderRow}>
+                <View style={styles.meetingBadge}>
+                  <Ionicons name="videocam" size={12} color="#196F1B" />
+                  <Text style={styles.meetingBadgeText}>लाइव बैठक</Text>
+                </View>
+                <View style={styles.meetingTimeBadge}>
+                  <Ionicons name="time" size={12} color="#92400E" />
+                  <Text style={styles.meetingTimeText}>प्रतिदिन सायं 7:30 बजे</Text>
+                </View>
+              </View>
+              <Text style={styles.meetingTitle}>संध्या सत्संग</Text>
+              <Text style={styles.meetingDesc}>
+                पंचमहाभूत एवं प्राकृतिक कृषि चर्चा हेतु लाइव संध्या सत्संग में जुड़ें (प्रतिदिन सायं 7:30 बजे)।
+              </Text>
+            </View>
+            <View style={styles.meetingBottom}>
+              <View style={styles.meetingJoinTextWrap}>
+                <Text style={styles.meetingJoinLabel}>संध्या सत्संग में जुड़ें</Text>
+                <Text style={styles.meetingJoinSub}>प्रतिदिन सायं 7:30 बजे • Zoho Meeting</Text>
+              </View>
+              <View style={styles.meetingJoinBtn}>
+                <Ionicons name="open-outline" size={18} color="#fff" />
+              </View>
+            </View>
+          </TouchableOpacity>
 
-        {/* Bottom tagline */}
-        <View style={styles.taglineWrap}>
-          <View style={styles.taglineDivider} />
-          <Text style={styles.taglineText}>🌿 Pure • Organic • Sustainable</Text>
-          <View style={styles.taglineDivider} />
-        </View>
+          {/* ── Customer Support WhatsApp Banner (Compact Hindi) ── */}
+          <TouchableOpacity
+            style={styles.supportCard}
+            activeOpacity={0.85}
+            onPress={handleWhatsAppSupport}
+          >
+            <View style={styles.supportIconWrap}>
+              <Ionicons name="logo-whatsapp" size={18} color="#fff" />
+            </View>
+            <View style={styles.supportTextWrap}>
+              <Text style={styles.supportLabel}>ग्राहक सहायता:</Text>
+              <Text style={styles.supportNumber}>{SUPPORT_PHONE_DISPLAY}</Text>
+            </View>
+            <View style={styles.supportActionPill}>
+              <Text style={styles.supportActionText}>चैट करें</Text>
+              <Ionicons name="chevron-forward" size={12} color={GREEN_PRIMARY} />
+            </View>
+          </TouchableOpacity>
+
+          {/* ── Weekly Referral Contest Banner (Win Free Govardhan Khanij Khad) ── */}
+          <TouchableOpacity
+            style={styles.referralBanner}
+            activeOpacity={0.88}
+            onPress={() => router.push("/referral" as any)}
+          >
+            <View style={styles.referralIconBadge}>
+              <Text style={styles.referralEmoji}>🏆</Text>
+            </View>
+            <View style={styles.referralTextCol}>
+              <View style={styles.referralTagRow}>
+                <Text style={styles.referralTagText}>साप्ताहिक प्रतियोगिता • FREE KHAD</Text>
+              </View>
+              <Text style={styles.referralTitle}>
+                हर हफ्ते जीतें 1 बोरी गोवर्धन खनिज खाद मुफ़्त!
+              </Text>
+              <Text style={styles.referralSub}>
+                किसान मित्रों को रेफर करें और लीडरबोर्ड में #1 बनें
+              </Text>
+            </View>
+            <View style={styles.referralArrowBox}>
+              <Ionicons name="chevron-forward" size={18} color="#78350F" />
+            </View>
+          </TouchableOpacity>
+
+          {/* 2×2 Grid */}
+          <View style={styles.gridContainer}>
+            <View style={styles.gridRow}>
+              {CATEGORIES.slice(0, 2).map((cat, i) => (
+                <CategoryCard
+                  key={cat.id}
+                  item={cat}
+                  index={i}
+                  onPress={() => handleCardPress(cat.id)}
+                />
+              ))}
+            </View>
+            <View style={styles.gridRow}>
+              {CATEGORIES.slice(2, 4).map((cat, i) => (
+                <CategoryCard
+                  key={cat.id}
+                  item={cat}
+                  index={i + 2}
+                  onPress={() => handleCardPress(cat.id)}
+                />
+              ))}
+            </View>
+          </View>
+
+          {/* Bottom tagline */}
+          <View style={styles.taglineWrap}>
+            <View style={styles.taglineDivider} />
+            <Text style={styles.taglineText}>🌿 Pure • Organic • Sustainable</Text>
+            <View style={styles.taglineDivider} />
+          </View>
         </ScrollView>
       </LinearGradient>
 
@@ -483,6 +559,27 @@ export default function LandingScreen() {
 
               <View style={styles.drawerDivider} />
 
+              {/* Customer Support WhatsApp in Drawer */}
+              <TouchableOpacity
+                style={styles.drawerSupportItem}
+                onPress={() => {
+                  closeMenu();
+                  setTimeout(handleWhatsAppSupport, 250);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.drawerSupportIcon}>
+                  <Ionicons name="logo-whatsapp" size={20} color="#fff" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.drawerSupportTitle}>Customer Support</Text>
+                  <Text style={styles.drawerSupportPhone}>{SUPPORT_PHONE_DISPLAY}</Text>
+                </View>
+                <Ionicons name="open-outline" size={16} color={GREEN_PRIMARY} />
+              </TouchableOpacity>
+
+              <View style={styles.drawerDivider} />
+
               {/* App info */}
               <View style={styles.drawerFooter}>
                 <Text style={styles.drawerFooterText}>
@@ -535,6 +632,24 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 22,
   },
+  headerRightActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  whatsappHeaderBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: WHATSAPP_GREEN,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
   profileBtn: {
     width: 42,
     height: 42,
@@ -576,7 +691,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5,
     borderColor: "#C8E6C9",
     overflow: "hidden",
-    marginBottom: 18,
+    marginBottom: 10,
     elevation: 4,
     shadowColor: "#196F1B",
     shadowOffset: { width: 0, height: 3 },
@@ -587,8 +702,14 @@ const styles = StyleSheet.create({
     padding: 14,
     paddingBottom: 12,
   },
+  meetingHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 8,
+    flexWrap: "wrap",
+  },
   meetingBadge: {
-    alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
@@ -596,7 +717,22 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingHorizontal: 10,
     paddingVertical: 4,
-    marginBottom: 8,
+  },
+  meetingTimeBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#FEF3C7",
+    borderRadius: 20,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: "#FDE68A",
+  },
+  meetingTimeText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: "#92400E",
   },
   meetingBadgeText: {
     fontSize: 11,
@@ -777,6 +913,164 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#666",
     letterSpacing: 0.5,
+  },
+  referralBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFBEB",
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 16,
+    borderWidth: 1.5,
+    borderColor: "#F59E0B",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 5,
+    elevation: 3,
+    gap: 12,
+  },
+  referralIconBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#FEF3C7",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#FCD34D",
+  },
+  referralEmoji: {
+    fontSize: 22,
+  },
+  referralTextCol: {
+    flex: 1,
+  },
+  referralTagRow: {
+    alignSelf: "flex-start",
+    backgroundColor: "#FDE68A",
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginBottom: 3,
+  },
+  referralTagText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: "#78350F",
+  },
+  referralTitle: {
+    fontSize: 13.5,
+    fontWeight: "800",
+    color: "#1A1D1F",
+  },
+  referralSub: {
+    fontSize: 11.5,
+    color: "#78350F",
+    marginTop: 2,
+    fontWeight: "600",
+  },
+  referralArrowBox: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#FDE68A",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  // ── Customer Support Card (Compact) ──
+  supportCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: "#C8E6C9",
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    marginBottom: 16,
+    elevation: 2,
+    shadowColor: "#196F1B",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+  },
+  supportIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: WHATSAPP_GREEN,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 10,
+  },
+  supportTextWrap: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    flexWrap: "wrap",
+  },
+  supportLabel: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#333",
+  },
+  supportNumber: {
+    fontSize: 13,
+    fontWeight: "800",
+    color: GREEN_PRIMARY,
+    letterSpacing: 0.2,
+  },
+  supportActionPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+    backgroundColor: GREEN_LIGHT,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    marginLeft: 8,
+  },
+  supportActionText: {
+    fontSize: 11,
+    fontWeight: "700",
+    color: GREEN_PRIMARY,
+  },
+
+  // ── Drawer Support Item ──
+  drawerSupportItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 16,
+    marginVertical: 6,
+    padding: 12,
+    borderRadius: 12,
+    backgroundColor: "#F1F8E9",
+    borderWidth: 1,
+    borderColor: "#C8E6C9",
+    gap: 12,
+  },
+  drawerSupportIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: WHATSAPP_GREEN,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  drawerSupportTitle: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: "#222",
+  },
+  drawerSupportPhone: {
+    fontSize: 13,
+    fontWeight: "700",
+    color: GREEN_PRIMARY,
+    marginTop: 1,
   },
 
   // ── Drawer ──

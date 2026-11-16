@@ -4,8 +4,11 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Dimensions,
+  Image,
+  Linking,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -21,11 +24,12 @@ import { useDispatch, useSelector } from "react-redux";
 import * as ScreenOrientation from "expo-screen-orientation";
 
 import { getCourseById } from "../data/courses";
-import { fetchLectureWatchUrl } from "../services/education.api";
+import { fetchLectureWatchUrl, fetchCourseLectures } from "../services/education.api";
 import {
   markLectureComplete,
   setLastWatched,
   selectCourseProgress,
+  selectIsPurchased,
 } from "../store/educationSlice";
 import type { RootState } from "../../../store/store";
 import type { Lecture } from "../types/course";
@@ -41,27 +45,61 @@ export default function LecturePlayerScreen() {
   const params = useLocalSearchParams<{ courseId: string; lectureId: string }>();
   const { courseId, lectureId } = params;
 
-  const course = getCourseById(courseId || "");
-  const lecture = course?.lectures.find((l) => l.id === lectureId);
-  const currentIndex = course?.lectures.findIndex((l) => l.id === lectureId) ?? -1;
-  const prevLecture = currentIndex > 0 ? course?.lectures[currentIndex - 1] : null;
+  const baseCourse = getCourseById(courseId || "");
+  const [courseLectures, setCourseLectures] = useState<Lecture[]>(
+    baseCourse?.lectures || []
+  );
+
+  useEffect(() => {
+    let isMounted = true;
+    async function loadDynamicLectures() {
+      try {
+        const res = await fetchCourseLectures(courseId || "");
+        if (isMounted && res?.lectures?.length) {
+          setCourseLectures(res.lectures);
+        }
+      } catch {}
+    }
+    loadDynamicLectures();
+    return () => {
+      isMounted = false;
+    };
+  }, [courseId]);
+
+  const course = baseCourse;
+  const lecture = courseLectures.find((l) => l.id === lectureId);
+  const currentIndex = courseLectures.findIndex((l) => l.id === lectureId) ?? -1;
+  const prevLecture = currentIndex > 0 ? courseLectures[currentIndex - 1] : null;
   const nextLecture =
-    currentIndex < (course?.lectures.length ?? 0) - 1
-      ? course?.lectures[currentIndex + 1]
+    currentIndex < (courseLectures.length ?? 0) - 1
+      ? courseLectures[currentIndex + 1]
       : null;
 
   const progress = useSelector((state: RootState) =>
     selectCourseProgress(state, courseId || "")
   );
+  const isPurchased = useSelector((state: RootState) =>
+    selectIsPurchased(state, courseId || "")
+  );
   const isCompleted =
     progress?.completedLectures.includes(lectureId || "") ?? false;
+
+  const nextIsLocked = Boolean(nextLecture && !nextLecture.isFree && !isPurchased);
 
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
   const [isFetchingUrl, setIsFetchingUrl] = useState(true);
   const [accessError, setAccessError] = useState<string | null>(null);
   const [videoLoading, setVideoLoading] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [actualDuration, setActualDuration] = useState<number | null>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Helper to format duration into hours and minutes
+  const formatDuration = (mins: number) => {
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    return h > 0 ? `${h}h ${m}m` : `${m} min`;
+  };
 
   // Mark as last watched on mount
   useEffect(() => {
@@ -70,11 +108,24 @@ export default function LecturePlayerScreen() {
     }
   }, [courseId, lectureId, dispatch]);
 
-  // Fetch dynamic streaming URL from NestJS / Zoho WorkDrive
+  // Fetch dynamic streaming URL from NestJS / Cloudflare R2
   useEffect(() => {
     let isMounted = true;
     async function loadStream() {
-      if (!lectureId) return;
+      if (!lectureId || !course || !lecture) return;
+
+      // Access Control: Block paid lectures if course not purchased
+      if (!lecture.isFree && !isPurchased) {
+        if (isMounted) {
+          setIsFetchingUrl(false);
+          setStreamUrl(null);
+          setAccessError(
+            "यह एक प्रीमियम व्याख्यान है। कृपया सभी व्याख्यान देखने के लिए पूरा पाठ्यक्रम खरीदें।"
+          );
+        }
+        return;
+      }
+
       setIsFetchingUrl(true);
       setAccessError(null);
       try {
@@ -91,9 +142,13 @@ export default function LecturePlayerScreen() {
             );
           }
         } else {
-          // Dev / offline mode fallback
-          if (isMounted && lecture?.videoUrl) {
+          // Dev / offline mode fallback ONLY if lecture is free or purchased
+          if (isMounted && (lecture.isFree || isPurchased) && lecture?.videoUrl) {
             setStreamUrl(lecture.videoUrl);
+          } else if (isMounted) {
+            setAccessError(
+              "कृपया इस व्याख्यान को देखने के लिए पाठ्यक्रम खरीदें।"
+            );
           }
         }
       } finally {
@@ -105,7 +160,7 @@ export default function LecturePlayerScreen() {
     return () => {
       isMounted = false;
     };
-  }, [lectureId, courseId, lecture]);
+  }, [lectureId, courseId, lecture, course, isPurchased]);
 
   // Fade in content
   useEffect(() => {
@@ -125,10 +180,13 @@ export default function LecturePlayerScreen() {
     };
   }, []);
 
-  // ─── Handle fullscreen messages from WebView JS ────────────────────────
+  // ─── Handle messages from WebView JS ───────────────────────────────────
   const handleWebViewMessage = useCallback(async (event: any) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === "loadedmetadata" && data.durationMinutes) {
+        setActualDuration(data.durationMinutes);
+      }
       if (data.type === "fullscreenChange") {
         if (data.isFullscreen) {
           setIsFullscreen(true);
@@ -151,8 +209,33 @@ export default function LecturePlayerScreen() {
     }
   }, [courseId, lectureId, dispatch]);
 
+  const handleBuyNow = useCallback(async () => {
+    const educationUrl = "https://www.tcbtjaivikkisan.com/education";
+    try {
+      await Linking.openURL(educationUrl);
+    } catch {
+      Alert.alert(
+        "Error",
+        `Unable to open course page. Please visit ${educationUrl}`
+      );
+    }
+  }, []);
+
   const navigateToLecture = useCallback(
     (targetLecture: Lecture) => {
+      const isTargetLocked = !targetLecture.isFree && !isPurchased;
+      if (isTargetLocked) {
+        Alert.alert(
+          "🔒 Premium Content",
+          `व्याख्यान ${targetLecture.order} प्रीमियम सामग्री है। इसे देखने के लिए कृपया पाठ्यक्रम खरीदें।`,
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Buy Course", onPress: handleBuyNow },
+          ]
+        );
+        return;
+      }
+
       router.replace({
         pathname: "/education/lecture",
         params: {
@@ -161,7 +244,7 @@ export default function LecturePlayerScreen() {
         },
       } as any);
     },
-    [courseId]
+    [courseId, isPurchased, handleBuyNow]
   );
 
   if (!course || !lecture) {
@@ -176,60 +259,170 @@ export default function LecturePlayerScreen() {
   }
 
   // Active playback video URL
-  const activeVideoUrl = streamUrl || lecture.videoUrl;
+  const activeVideoUrl = streamUrl || (lecture.isFree || isPurchased ? lecture.videoUrl : "");
 
-  // Build HTML for video player — includes fullscreen detection
+  // Build HTML for video player with clean styling and tap-to-play
   const videoHtml = `
     <!DOCTYPE html>
     <html>
     <head>
-      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
       <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; user-select: none; }
-        body { background: #000; display: flex; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body {
+          width: 100%;
+          height: 100%;
+          background: #000;
+          overflow: hidden;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+        .player-wrap {
+          position: relative;
+          width: 100%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: #000;
+        }
         video {
           width: 100%;
           height: 100%;
           object-fit: contain;
           background: #000;
-          -webkit-touch-callout: none;
-          pointer-events: auto;
+          outline: none;
         }
-        /* Hide download button in Chrome-based browsers */
-        video::-internal-media-controls-download-button { display: none; }
-        video::-webkit-media-controls-enclosure { overflow: hidden; }
-        video::-webkit-media-controls-panel { width: calc(100% + 30px); }
+        video::-internal-media-controls-download-button { display: none !important; }
+        video::-webkit-media-controls-download-button { display: none !important; }
+        .play-overlay {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          background: rgba(0, 0, 0, 0.35);
+          cursor: pointer;
+          transition: opacity 0.2s ease;
+          z-index: 5;
+        }
+        .play-overlay.hidden {
+          opacity: 0;
+          pointer-events: none;
+        }
+        .play-btn-circle {
+          width: 64px;
+          height: 64px;
+          border-radius: 32px;
+          background: rgba(25, 111, 27, 0.95);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+        }
+        .play-triangle {
+          width: 0;
+          height: 0;
+          border-top: 12px solid transparent;
+          border-bottom: 12px solid transparent;
+          border-left: 20px solid #ffffff;
+          margin-left: 4px;
+        }
       </style>
     </head>
     <body>
-      <video
-        id="player"
-        controls
-        autoplay
-        playsinline
-        controlsList="nodownload noremoteplayback"
-        disablePictureInPicture
-        oncontextmenu="return false;"
-        src="${activeVideoUrl}"
-        poster=""
-      >
-        Your browser does not support the video tag.
-      </video>
+      <div class="player-wrap">
+        <video
+          id="player"
+          controls
+          playsinline
+          webkit-playsinline
+          preload="metadata"
+          controlsList="nodownload"
+          disablePictureInPicture
+        >
+          <source src="${activeVideoUrl}" type="video/mp4">
+          Your browser does not support the video tag.
+        </video>
+        <div class="play-overlay" id="overlay" onclick="startPlay()">
+          <div class="play-btn-circle">
+            <div class="play-triangle"></div>
+          </div>
+        </div>
+      </div>
       <script>
-        // Block context menu / drag / multi-touch
-        document.addEventListener('contextmenu', function(e) { e.preventDefault(); return false; });
-        document.addEventListener('dragstart', function(e) { e.preventDefault(); return false; });
-        document.addEventListener('touchstart', function(e) {
-          if (e.touches.length > 1) e.preventDefault();
-        }, { passive: false });
+        const player = document.getElementById('player');
+        const overlay = document.getElementById('overlay');
 
-        // Notify React Native when fullscreen is entered/exited
+        function startPlay() {
+          overlay.classList.add('hidden');
+          player.play().catch(function(e) { console.log(e); });
+        }
+
+        player.addEventListener('loadedmetadata', function() {
+          var durMins = Math.round(player.duration / 60);
+          if (window.ReactNativeWebView && durMins > 0) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'loadedmetadata',
+              durationMinutes: durMins,
+              durationSeconds: player.duration
+            }));
+          }
+          try {
+            var saved = localStorage.getItem('tcbt_vid_pos_${lecture.id}');
+            if (saved) {
+              var pos = parseFloat(saved);
+              if (pos > 5 && pos < player.duration - 15) {
+                player.currentTime = pos;
+              }
+            }
+          } catch(e) {}
+        });
+
+        player.addEventListener('timeupdate', function() {
+          try {
+            if (player.currentTime > 5) {
+              localStorage.setItem('tcbt_vid_pos_${lecture.id}', player.currentTime.toString());
+            }
+          } catch(e) {}
+        });
+
+        player.addEventListener('play', function() {
+          overlay.classList.add('hidden');
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'play' }));
+          }
+        });
+
+        player.addEventListener('pause', function() {
+          if (player.currentTime < 0.5) {
+            overlay.classList.remove('hidden');
+          }
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'pause' }));
+          }
+        });
+
+        player.addEventListener('ended', function() {
+          overlay.classList.remove('hidden');
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'ended' }));
+          }
+        });
+
         function onFullscreenChange() {
           var isFS = !!(document.fullscreenElement || document.webkitFullscreenElement);
-          window.ReactNativeWebView.postMessage(JSON.stringify({
-            type: 'fullscreenChange',
-            isFullscreen: isFS
-          }));
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'fullscreenChange',
+              isFullscreen: isFS
+            }));
+          }
         }
         document.addEventListener('fullscreenchange', onFullscreenChange);
         document.addEventListener('webkitfullscreenchange', onFullscreenChange);
@@ -253,11 +446,19 @@ export default function LecturePlayerScreen() {
             <Text style={styles.accessErrorSub}>{accessError}</Text>
             <TouchableOpacity
               style={styles.unlockBtn}
-              onPress={() => router.back()}
+              onPress={handleBuyNow}
               activeOpacity={0.8}
             >
               <Ionicons name="cart" size={16} color="#fff" />
-              <Text style={styles.unlockBtnText}>कोर्स अनलॉक करें</Text>
+              <Text style={styles.unlockBtnText}>कोर्स अनलॉक करें (Buy Course)</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.unlockBtn, styles.backFromLockBtn]}
+              onPress={() => router.back()}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="arrow-back" size={16} color="#aaa" />
+              <Text style={styles.backFromLockText}>पीछे जाएँ (Go Back)</Text>
             </TouchableOpacity>
           </View>
         ) : isFetchingUrl ? (
@@ -277,12 +478,18 @@ export default function LecturePlayerScreen() {
             )}
             <WebView
               key={activeVideoUrl}
-              source={{ html: videoHtml }}
+              source={{
+                html: videoHtml,
+                baseUrl: "https://pub-b30bf5dcb5c54e619a24a0f7d1b2d91e.r2.dev/",
+              }}
               style={styles.webview}
               allowsInlineMediaPlayback
               allowsFullscreenVideo
               mediaPlaybackRequiresUserAction={false}
               javaScriptEnabled
+              domStorageEnabled
+              originWhitelist={["*"]}
+              mixedContentMode="always"
               onLoadEnd={() => setVideoLoading(false)}
               onMessage={handleWebViewMessage}
             />
@@ -302,7 +509,7 @@ export default function LecturePlayerScreen() {
           </TouchableOpacity>
           <View style={styles.headerInfo}>
             <Text style={styles.headerLecture} numberOfLines={1}>
-              Lecture {lecture.order} of {course.lectures.length}
+              Lecture {lecture.order} of {courseLectures.length}
             </Text>
           </View>
           <TouchableOpacity
@@ -338,9 +545,16 @@ export default function LecturePlayerScreen() {
                     LECTURE {lecture.order}
                   </Text>
                 </View>
+                {lecture.isFree && (
+                  <View style={styles.freeBadge}>
+                    <Text style={styles.freeBadgeText}>FREE DEMO</Text>
+                  </View>
+                )}
                 <View style={styles.durationBadge}>
                   <Ionicons name="time-outline" size={12} color="#666" />
-                  <Text style={styles.durationText}>{lecture.duration} min</Text>
+                  <Text style={styles.durationText}>
+                    {formatDuration(actualDuration ?? lecture.duration)}
+                  </Text>
                 </View>
                 {isCompleted && (
                   <View style={styles.completedBadge}>
@@ -351,6 +565,25 @@ export default function LecturePlayerScreen() {
               </View>
               <Text style={styles.lectureTitle}>{lecture.title}</Text>
               <Text style={styles.lectureDescription}>{lecture.description}</Text>
+
+              {/* Instructor attribution */}
+              <View style={styles.playerInstructorRow}>
+                <Image
+                  source={require("@/assets/images/instructor_avatar.png")}
+                  style={styles.playerInstructorAvatar}
+                  resizeMode="cover"
+                />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.playerInstructorName}>
+                    {course.instructor}
+                  </Text>
+                  {course.instructorTitle && (
+                    <Text style={styles.playerInstructorTitle}>
+                      {course.instructorTitle}
+                    </Text>
+                  )}
+                </View>
+              </View>
             </View>
 
             {/* Navigation buttons */}
@@ -388,7 +621,11 @@ export default function LecturePlayerScreen() {
               )}
 
               <TouchableOpacity
-                style={[styles.navBtn, !nextLecture && styles.navBtnDisabled]}
+                style={[
+                  styles.navBtn,
+                  !nextLecture && styles.navBtnDisabled,
+                  nextIsLocked && styles.navBtnLocked,
+                ]}
                 onPress={() => nextLecture && navigateToLecture(nextLecture)}
                 disabled={!nextLecture}
                 activeOpacity={0.7}
@@ -397,14 +634,15 @@ export default function LecturePlayerScreen() {
                   style={[
                     styles.navBtnText,
                     !nextLecture && styles.navBtnTextDisabled,
+                    nextIsLocked && styles.navBtnTextLocked,
                   ]}
                 >
-                  Next
+                  Next {nextIsLocked ? "🔒" : ""}
                 </Text>
                 <Ionicons
-                  name="chevron-forward"
-                  size={18}
-                  color={nextLecture ? GREEN : "#ccc"}
+                  name={nextIsLocked ? "lock-closed" : "chevron-forward"}
+                  size={nextIsLocked ? 14 : 18}
+                  color={!nextLecture ? "#ccc" : nextIsLocked ? "#888" : GREEN}
                 />
               </TouchableOpacity>
             </View>
@@ -412,8 +650,9 @@ export default function LecturePlayerScreen() {
             {/* All lectures quick nav */}
             <View style={styles.allLecturesSection}>
               <Text style={styles.allLecturesTitle}>All Lectures</Text>
-              {course.lectures.map((l) => {
+              {courseLectures.map((l) => {
                 const isCurrent = l.id === lectureId;
+                const lLocked = !l.isFree && !isPurchased;
                 const lCompleted =
                   progress?.completedLectures.includes(l.id) ?? false;
 
@@ -423,6 +662,7 @@ export default function LecturePlayerScreen() {
                     style={[
                       styles.allLectureRow,
                       isCurrent && styles.allLectureRowActive,
+                      lLocked && styles.allLectureRowLocked,
                     ]}
                     onPress={() => {
                       if (!isCurrent) navigateToLecture(l);
@@ -434,10 +674,13 @@ export default function LecturePlayerScreen() {
                         styles.allLectureNum,
                         isCurrent && styles.allLectureNumActive,
                         lCompleted && styles.allLectureNumCompleted,
+                        lLocked && styles.allLectureNumLocked,
                       ]}
                     >
                       {lCompleted ? (
                         <Ionicons name="checkmark" size={12} color="#fff" />
+                      ) : lLocked ? (
+                        <Ionicons name="lock-closed" size={12} color="#888" />
                       ) : (
                         <Text
                           style={[
@@ -449,19 +692,36 @@ export default function LecturePlayerScreen() {
                         </Text>
                       )}
                     </View>
+                    <View style={styles.allLectureTitleWrap}>
+                      <Text
+                        style={[
+                          styles.allLectureTitle,
+                          isCurrent && styles.allLectureTitleActive,
+                          lLocked && styles.allLectureTitleLocked,
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {l.title}
+                      </Text>
+                      {l.isFree && (
+                        <View style={styles.freePill}>
+                          <Text style={styles.freePillText}>FREE</Text>
+                        </View>
+                      )}
+                    </View>
                     <Text
                       style={[
-                        styles.allLectureTitle,
-                        isCurrent && styles.allLectureTitleActive,
+                        styles.allLectureDur,
+                        lLocked && styles.allLectureDurLocked,
                       ]}
-                      numberOfLines={1}
                     >
-                      {l.title}
+                      {formatDuration(l.duration)}
                     </Text>
-                    <Text style={styles.allLectureDur}>{l.duration}m</Text>
-                    {isCurrent && (
+                    {isCurrent ? (
                       <Ionicons name="volume-high" size={14} color={BLUE} />
-                    )}
+                    ) : lLocked ? (
+                      <Ionicons name="lock-closed-outline" size={14} color="#bbb" />
+                    ) : null}
                   </TouchableOpacity>
                 );
               })}
@@ -565,6 +825,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "700",
   },
+  backFromLockBtn: {
+    backgroundColor: "transparent",
+    borderWidth: 1,
+    borderColor: "#444",
+    marginTop: 8,
+  },
+  backFromLockText: {
+    color: "#aaa",
+    fontSize: 13,
+    fontWeight: "600",
+  },
 
   // ── Header bar ──
   headerBar: {
@@ -619,11 +890,40 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#F0F0F0",
   },
+  playerInstructorRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginTop: 14,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#F3F4F6",
+  },
+  playerInstructorAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#E8F5E9",
+    borderWidth: 1.5,
+    borderColor: "#A5D6A7",
+  },
+  playerInstructorName: {
+    fontSize: 14,
+    fontWeight: "700",
+    color: "#1F2937",
+  },
+  playerInstructorTitle: {
+    fontSize: 11,
+    color: GREEN,
+    fontWeight: "500",
+    marginTop: 1,
+  },
   titleBadgeRow: {
     flexDirection: "row",
     gap: 8,
     marginBottom: 10,
     flexWrap: "wrap",
+    alignItems: "center",
   },
   lectureBadge: {
     backgroundColor: "#E3F2FD",
@@ -635,6 +935,18 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "800",
     color: BLUE,
+    letterSpacing: 0.5,
+  },
+  freeBadge: {
+    backgroundColor: "#E8F5E9",
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  freeBadgeText: {
+    fontSize: 10,
+    fontWeight: "800",
+    color: GREEN,
     letterSpacing: 0.5,
   },
   durationBadge: {
@@ -705,6 +1017,10 @@ const styles = StyleSheet.create({
     borderColor: "#F0F0F0",
     backgroundColor: "#FAFAFA",
   },
+  navBtnLocked: {
+    borderColor: "#E5E5E5",
+    backgroundColor: "#F9F9F9",
+  },
   navBtnText: {
     fontSize: 13,
     fontWeight: "600",
@@ -712,6 +1028,9 @@ const styles = StyleSheet.create({
   },
   navBtnTextDisabled: {
     color: "#ccc",
+  },
+  navBtnTextLocked: {
+    color: "#777",
   },
   markCompleteBtn: {
     flexDirection: "row",
@@ -752,6 +1071,10 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#D0E4FF",
   },
+  allLectureRowLocked: {
+    backgroundColor: "#FAFAFA",
+    opacity: 0.8,
+  },
   allLectureNum: {
     width: 28,
     height: 28,
@@ -766,6 +1089,9 @@ const styles = StyleSheet.create({
   allLectureNumCompleted: {
     backgroundColor: GREEN,
   },
+  allLectureNumLocked: {
+    backgroundColor: "#EFEFEF",
+  },
   allLectureNumText: {
     fontSize: 12,
     fontWeight: "700",
@@ -774,8 +1100,14 @@ const styles = StyleSheet.create({
   allLectureNumTextActive: {
     color: BLUE,
   },
-  allLectureTitle: {
+  allLectureTitleWrap: {
     flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  allLectureTitle: {
+    flexShrink: 1,
     fontSize: 13,
     fontWeight: "500",
     color: "#444",
@@ -784,9 +1116,28 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: BLUE,
   },
+  allLectureTitleLocked: {
+    color: "#888",
+  },
   allLectureDur: {
     fontSize: 11,
     color: "#aaa",
     fontWeight: "500",
   },
+  allLectureDurLocked: {
+    color: "#bbb",
+  },
+  freePill: {
+    backgroundColor: "#E8F5E9",
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+  },
+  freePillText: {
+    fontSize: 9,
+    fontWeight: "800",
+    color: GREEN,
+    letterSpacing: 0.5,
+  },
 });
+

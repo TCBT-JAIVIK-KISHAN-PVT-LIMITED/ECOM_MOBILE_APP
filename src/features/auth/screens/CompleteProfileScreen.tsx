@@ -20,6 +20,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAppDispatch, useAppSelector } from "../../../shared/hooks/useRedux";
 import { updateProfile } from "../store/userSlice";
 import { updateUserProfile } from "../../profile/services/user.api";
+import { applyReferralCodeApi } from "../../referral/services/referral.api";
 
 const GREEN = "#196F1B";
 
@@ -27,6 +28,7 @@ export default function CompleteProfileScreen() {
   const dispatch = useAppDispatch();
   const userId = useAppSelector((state) => state.user.userId);
   const [fullName, setFullName] = useState("");
+  const [referralCode, setReferralCode] = useState("");
   const [saving, setSaving] = useState(false);
   const scaleAnim = useRef(new Animated.Value(0)).current;
 
@@ -56,6 +58,21 @@ export default function CompleteProfileScreen() {
     try {
       // Save to backend
       if (userId) {
+        const trimmedCode = referralCode.trim().toUpperCase();
+        // Apply referral code FIRST while the account is in first-time signup state
+        if (trimmedCode) {
+          try {
+            await applyReferralCodeApi(userId, trimmedCode);
+          } catch (refErr: any) {
+            Alert.alert(
+              "Invalid Referral Code",
+              refErr?.message ||
+                "Referral code could not be applied. Please check the code or leave it blank to continue."
+            );
+            setSaving(false);
+            return;
+          }
+        }
         await updateUserProfile(userId, { name: trimmed });
       }
       // Update Redux state
@@ -135,6 +152,21 @@ export default function CompleteProfileScreen() {
               autoCorrect={false}
               autoFocus
               maxLength={50}
+              returnKeyType="next"
+            />
+
+            <Text style={[styles.label, { marginTop: 18 }]}>
+              Referral Code / रेफरल कोड (Optional)
+            </Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter friend's code (e.g. TCBT4829)"
+              placeholderTextColor="#999"
+              value={referralCode}
+              onChangeText={setReferralCode}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              maxLength={16}
               returnKeyType="done"
               onSubmitEditing={handleContinue}
             />

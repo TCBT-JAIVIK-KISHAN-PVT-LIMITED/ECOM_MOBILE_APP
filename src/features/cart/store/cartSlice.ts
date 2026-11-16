@@ -7,7 +7,6 @@ import {
 } from "@reduxjs/toolkit";
 import type { RootState } from "../../../store/store";
 import { RESET_APP } from "../../../store/resetAction";
-import { dispatchShippingCalc } from "../../checkout/store/shippingSlice";
 import {
   fetchCart,
   updateCartItem,
@@ -31,6 +30,8 @@ type CartState = {
   productData: Record<string, CartProduct>;
   /** Server cart total */
   serverTotal: number;
+  /** Server cart total weight in grams */
+  serverWeight: number;
   /** Loading / syncing state */
   loading: boolean;
   error: string | null;
@@ -40,24 +41,33 @@ const initialState: CartState = {
   items: {},
   productData: {},
   serverTotal: 0,
+  serverWeight: 0,
   loading: false,
   error: null,
 };
+
+// ─── Debounce & Sequence Tracking for Cart Item Updates ──────────────────────
+
+const DEBOUNCE_MS = 300;
+const latestRequestSeq: Record<string, number> = {};
+const syncedRequestSeq: Record<string, number> = {};
+const pendingTimers: Record<
+  string,
+  { timer: ReturnType<typeof setTimeout>; resolve: (proceed: boolean) => void }
+> = {};
+
+function hasUnsyncedChanges(productId: string): boolean {
+  return (latestRequestSeq[productId] ?? 0) > (syncedRequestSeq[productId] ?? 0);
+}
 
 // ─── Async Thunks ────────────────────────────────────────────────────────────
 
 /** Fetch the full cart from the server */
 export const syncCart = createAsyncThunk(
   "cart/syncCart",
-  async (_, { rejectWithValue, dispatch, getState }) => {
+  async (_, { rejectWithValue }) => {
     try {
       const cart = await fetchCart();
-
-      // If cart has items, pre-fetch shipping rate in background
-      if (cart.items?.length > 0 && cart.totalWeight) {
-        dispatchShippingCalc(dispatch, getState as () => any, cart.totalWeight);
-      }
-
       return cart;
     } catch (err: any) {
       return rejectWithValue(err.message || "Failed to load cart");
@@ -65,26 +75,65 @@ export const syncCart = createAsyncThunk(
   }
 );
 
-/** Add/update/remove a single item via API */
+/** Add/update/remove a single item via API (debounced per productId, ignores stale responses) */
 export const updateItemAsync = createAsyncThunk(
   "cart/updateItem",
   async (
     { productId, quantity }: { productId: string; quantity: number },
     { rejectWithValue, dispatch, getState }
   ) => {
+    const seq = (latestRequestSeq[productId] ?? 0) + 1;
+    latestRequestSeq[productId] = seq;
+
+    // Cancel any previous debounce timer for this product
+    if (pendingTimers[productId]) {
+      clearTimeout(pendingTimers[productId].timer);
+      pendingTimers[productId].resolve(false);
+      delete pendingTimers[productId];
+    }
+
+    // Wait for the user to finish rapid tapping on this product
+    const shouldProceed = await new Promise<boolean>((resolve) => {
+      const timer = setTimeout(() => {
+        delete pendingTimers[productId];
+        resolve(true);
+      }, DEBOUNCE_MS);
+      pendingTimers[productId] = { timer, resolve };
+    });
+
+    if (!shouldProceed || latestRequestSeq[productId] !== seq) {
+      return { skipped: true as const };
+    }
+
+    // Read the latest optimistic quantity from Redux store (0 if removed from state.items)
+    const state = getState() as RootState;
+    const latestQty = state.cart.items[productId] ?? 0;
+
     try {
-      console.log(`[CART SYNC] PATCH item: ${productId}, qty: ${quantity}`);
-      const result = await updateCartItem(productId, quantity);
+      console.log(`[CART SYNC] PATCH item: ${productId}, qty: ${latestQty} (seq: ${seq})`);
+      const result = await updateCartItem(productId, latestQty);
+
+      // If the user tapped again while this request was in flight, ignore this stale response
+      if (latestRequestSeq[productId] !== seq) {
+        console.log(
+          `[CART SYNC] Ignoring stale PATCH response for ${productId} (seq ${seq} < ${latestRequestSeq[productId]})`
+        );
+        return { skipped: true as const };
+      }
+
+      syncedRequestSeq[productId] = seq;
       console.log('[CART SYNC] PATCH result:', JSON.stringify(result).substring(0, 300));
 
-      // Trigger background shipping rate calculation — pass weight from
-      // the PATCH response so we skip the redundant fetchCart() call
-      dispatchShippingCalc(dispatch, getState as () => any, result.totalWeight);
-
-      return result;
+      return { skipped: false as const, cart: result };
     } catch (err: any) {
-      console.error('[CART SYNC] PATCH failed:', err.message);
-      return rejectWithValue(err.message || "Failed to update cart");
+      if (latestRequestSeq[productId] === seq) {
+        syncedRequestSeq[productId] = seq;
+        console.error('[CART SYNC] PATCH failed:', err.message);
+        // Re-sync with server so optimistic UI reverts to actual server state on error
+        dispatch(syncCart());
+        return rejectWithValue(err.message || "Failed to update cart");
+      }
+      return { skipped: true as const };
     }
   }
 );
@@ -96,20 +145,24 @@ function parseCartResponse(cart: CartResponse) {
   const productData: Record<string, CartProduct> = {};
 
   for (const item of cart.items || []) {
+    if (!item.name) continue;
     const id = item.product_id;
     items[id] = item.quantity;
-    // Always upsert productData — even if name is missing — so UI never
-    // shows a "Loading..." placeholder for a known cart item.
     productData[id] = {
       id,
-      name: item.name || "Unknown Product",
+      name: item.name,
       priceRaw: item.price || 0,
       unit: "",
       image: item.image_url || "https://via.placeholder.com/150",
     };
   }
 
-  return { items, productData, serverTotal: cart.total_amount || 0 };
+  return {
+    items,
+    productData,
+    serverTotal: cart.total_amount || 0,
+    serverWeight: cart.totalWeight || 0,
+  };
 }
 
 // ─── Slice ────────────────────────────────────────────────────────────────────
@@ -147,6 +200,7 @@ export const cartSlice = createSlice({
       state.items = {};
       state.productData = {};
       state.serverTotal = 0;
+      state.serverWeight = 0;
     },
   },
   extraReducers: (builder) => {
@@ -157,9 +211,21 @@ export const cartSlice = createSlice({
     });
     builder.addCase(syncCart.fulfilled, (state, action) => {
       const parsed = parseCartResponse(action.payload);
-      state.items = parsed.items;
+      // Preserve local optimistic quantities for any products that are mid-debounce/in-flight
+      const mergedItems: Record<string, number> = { ...parsed.items };
+      for (const pid of Object.keys({ ...state.items, ...parsed.items })) {
+        if (hasUnsyncedChanges(pid)) {
+          if (state.items[pid] && state.items[pid] > 0) {
+            mergedItems[pid] = state.items[pid];
+          } else {
+            delete mergedItems[pid];
+          }
+        }
+      }
+      state.items = mergedItems;
       state.productData = { ...state.productData, ...parsed.productData };
       state.serverTotal = parsed.serverTotal;
+      state.serverWeight = parsed.serverWeight;
       state.loading = false;
     });
     builder.addCase(syncCart.rejected, (state, action) => {
@@ -169,15 +235,27 @@ export const cartSlice = createSlice({
 
     // ── updateItemAsync ──
     builder.addCase(updateItemAsync.fulfilled, (state, action) => {
-      const parsed = parseCartResponse(action.payload);
-      state.items = parsed.items;
+      if (action.payload.skipped) return;
+      const parsed = parseCartResponse(action.payload.cart);
+      // Preserve local optimistic quantities for any products that are still mid-debounce/in-flight
+      const mergedItems: Record<string, number> = { ...parsed.items };
+      for (const pid of Object.keys({ ...state.items, ...parsed.items })) {
+        if (hasUnsyncedChanges(pid)) {
+          if (state.items[pid] && state.items[pid] > 0) {
+            mergedItems[pid] = state.items[pid];
+          } else {
+            delete mergedItems[pid];
+          }
+        }
+      }
+      state.items = mergedItems;
       state.productData = { ...state.productData, ...parsed.productData };
       state.serverTotal = parsed.serverTotal;
+      state.serverWeight = parsed.serverWeight;
       state.error = null;
     });
     builder.addCase(updateItemAsync.rejected, (state, action) => {
       state.error = action.payload as string;
-      // On error, we could revert optimistic update — for now just log
     });
 
     // ── Global reset on logout ──
@@ -221,6 +299,9 @@ export const selectSubtotal = createSelector(
 
 /** Server-calculated total (if available) */
 export const selectServerTotal = (state: RootState) => state.cart.serverTotal;
+
+/** Server-calculated weight in grams (if available) */
+export const selectServerWeight = (state: RootState) => state.cart.serverWeight;
 
 /** Delivery fee — free above ₹500 */
 export const selectDeliveryFee = createSelector(

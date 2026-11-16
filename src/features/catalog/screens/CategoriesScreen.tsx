@@ -104,6 +104,7 @@ const CategorySection: React.FC<{
   </View>
 );
 
+
 // ─── Main Screen ───────────────────────────────────
 export default function CategoryScreen(): React.JSX.Element {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -140,9 +141,12 @@ export default function CategoryScreen(): React.JSX.Element {
           (c: ApiCategory) => c.id && c.name
         );
 
+        const matchedNames = new Set<string>();
+
         // Match categories to grouped products by name
         const finalCategories: Category[] = validCategories
           .map((c: ApiCategory) => {
+            matchedNames.add(c.name);
             const items = grouped[c.name] || [];
 
             return {
@@ -152,8 +156,23 @@ export default function CategoryScreen(): React.JSX.Element {
               totalItems: items.length,
             };
           })
-          .filter((c: Category) => c.totalItems > 0)
-          .sort((a: Category, b: Category) => b.totalItems - a.totalItems);
+          .filter((c: Category) => c.totalItems > 0);
+
+        // Include any product categories not yet present in /categories (e.g. "food")
+        Object.entries(grouped).forEach(([catName, items]) => {
+          if (!matchedNames.has(catName) && items.length > 0) {
+            finalCategories.push({
+              id: catName,
+              title: catName.toLowerCase() === "food" ? "TCBT Food" : catName,
+              items: items.slice(0, 8),
+              totalItems: items.length,
+            });
+          }
+        });
+
+        finalCategories.sort(
+          (a: Category, b: Category) => b.totalItems - a.totalItems
+        );
 
         if (mounted) setCategories(finalCategories);
       } catch (err) {

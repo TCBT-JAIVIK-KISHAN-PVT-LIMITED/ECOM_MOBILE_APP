@@ -1,8 +1,11 @@
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React from "react";
 import {
+  Alert,
   Dimensions,
   Image,
+  Linking,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -10,6 +13,9 @@ import {
 } from "react-native";
 import { SvgXml } from "react-native-svg";
 import { useSelector } from "react-redux";
+
+const SUPPORT_WHATSAPP_URL = "https://wa.me/918871271446";
+const SUPPORT_PHONE_DISPLAY = "+91 88712 71446";
 
 // ── Exact SVGs from Figma ────────────────────────────────────────────────────
 const SEARCH_SVG = `<svg width="19" height="19" viewBox="0 0 19 19" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -42,9 +48,15 @@ export default function Header({
     router.push("/profile");
   };
 
+  const handleWhatsAppSupport = () => {
+    Linking.openURL(SUPPORT_WHATSAPP_URL).catch(() => {
+      Alert.alert("Customer Support", `WhatsApp us at ${SUPPORT_PHONE_DISPLAY}`);
+    });
+  };
+
   return (
     <View style={styles.header}>
-      {/* ── Row 1: Brand + Profile ── */}
+      {/* ── Row 1: Brand + WhatsApp Support + Profile ── */}
       <View style={styles.topRow}>
         <View style={styles.brandBlock}>
           <Text style={styles.brandName}>TCBT</Text>
@@ -57,18 +69,28 @@ export default function Header({
           </View>
         </View>
 
-        {/* Figma: Ellipse 2 = 37×37 white circle, user image = 13×15px inside */}
-        <TouchableOpacity
-          style={styles.profileCircle}
-          onPress={handleProfilePress}
-          activeOpacity={0.8}
-        >
-          <Image
-            source={require("@/assets/icons/user_1.png")}
-            style={styles.profileIcon}
-            resizeMode="contain"
-          />
-        </TouchableOpacity>
+        <View style={styles.rightActions}>
+          <TouchableOpacity
+            style={styles.whatsappCircle}
+            onPress={handleWhatsAppSupport}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="logo-whatsapp" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+
+          {/* Figma: Ellipse 2 = 37×37 white circle, user image = 13×15px inside */}
+          <TouchableOpacity
+            style={styles.profileCircle}
+            onPress={handleProfilePress}
+            activeOpacity={0.8}
+          >
+            <Image
+              source={require("@/assets/icons/user_1.png")}
+              style={styles.profileIcon}
+              resizeMode="contain"
+            />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* ── Search Bar ── */}
@@ -160,6 +182,19 @@ const styles = StyleSheet.create({
   },
 
   // Figma: Ellipse 2 → 37×37, radius 20, #FFFFFF
+  rightActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+  },
+  whatsappCircle: {
+    width: 37,
+    height: 37,
+    borderRadius: 20,
+    backgroundColor: "#25D366",
+    alignItems: "center",
+    justifyContent: "center",
+  },
   profileCircle: {
     width: 37,
     height: 37,
